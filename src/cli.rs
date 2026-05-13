@@ -1,10 +1,24 @@
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{Shell, generate};
+use clap_complete::{generate, Shell};
+use clap_complete_nushell::Nushell;
+use std::io;
 
 use crate::algolia::search;
 use crate::auth;
 use crate::cmd;
+
+#[derive(clap::ValueEnum, Clone)]
+pub enum AnyShell {
+    Bash,
+    Zsh,
+    Fish,
+    #[value(name = "powershell", alias = "pwsh")]
+    PowerShell,
+    Elvish,
+    #[value(alias = "nu")]
+    Nushell,
+}
 
 /// CLI for working with Algolia's APIs
 #[derive(Parser)]
@@ -27,7 +41,7 @@ enum Commands {
     Completions {
         /// The shell for which to generate completions
         #[arg(value_enum)]
-        shell: Shell,
+        shell: AnyShell,
     },
 }
 
@@ -47,12 +61,20 @@ pub async fn run() -> Result<()> {
         Commands::Indices { subcommand } => match subcommand {
             IndicesCommands::List => cmd::list_indices(&client).await?,
         },
-        Commands::Completions { shell } => generate(
-            shell,
-            &mut Cli::command(),
-            "algolia-rs",
-            &mut std::io::stdout(),
-        ),
+        Commands::Completions { shell } =>  {
+            let mut cmd = Cli::command();
+            let name = env!("CARGO_PKG_NAME");
+
+            // The duplication exists because I can't extend the `clap_complete::Shell` enum.
+            match shell {
+                AnyShell::Bash => generate(Shell::Bash, &mut cmd, name, &mut io::stdout()),
+                AnyShell::Zsh => generate(Shell::Zsh, &mut cmd, name, &mut io::stdout()),
+                AnyShell::Fish => generate(Shell::Fish, &mut cmd, name, &mut io::stdout()),
+                AnyShell::Elvish => generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout()),
+                AnyShell::PowerShell => generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout()),
+                AnyShell::Nushell => generate(Nushell, &mut cmd, name, &mut io::stdout()),
+            }
+        }
     }
 
     Ok(())
