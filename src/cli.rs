@@ -47,6 +47,13 @@ enum Commands {
         subcommand: IndicesCommands,
     },
 
+    /// Work with profiles
+    #[command(visible_aliases = ["profile", "p"])]
+    Profiles {
+        #[command(subcommand)]
+        subcommand: ProfileCommands,
+    },
+
     /// Generate completion scripts
     Completions {
         /// The shell for which to generate completions
@@ -66,6 +73,17 @@ enum IndicesCommands {
     },
 }
 
+#[derive(clap::Subcommand)]
+enum ProfileCommands {
+    /// List profiles
+    #[command(visible_aliases = ["ls", "l"])]
+    List {
+        /// Output format
+        #[arg(short, long, value_enum)]
+        output: Option<OutputFormat>,
+    }
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let auth = auth::Credentials::from_env()?;
@@ -83,8 +101,24 @@ pub async fn run() -> Result<()> {
                     }
                 });
                 cmd::list_indices(&client, &output_format, io::stdout()).await?
-            },
+            }
         },
+
+        Commands::Profiles { subcommand } => match subcommand {
+            ProfileCommands::List { output } => {
+                // Set output if not specified by command line option
+                let output_format = output.unwrap_or_else(|| {
+                    if io::stdout().is_terminal() {
+                        OutputFormat::Pretty
+                    } else {
+                        OutputFormat::Json
+                    }
+                });
+                cmd::list_profiles(&output_format, io::stdout())?
+            }
+        }
+
+
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             let name = env!("CARGO_PKG_NAME");
