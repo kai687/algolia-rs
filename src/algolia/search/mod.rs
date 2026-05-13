@@ -23,12 +23,9 @@ impl SearchClient {
         let mut headers = header::HeaderMap::new();
         headers.insert(
             "x-algolia-application-id",
-            header::HeaderValue::from_str(&app_id)?,
+            header::HeaderValue::from_str(app_id)?,
         );
-        headers.insert(
-            "x-algolia-api-key",
-            header::HeaderValue::from_str(&api_key)?,
-        );
+        headers.insert("x-algolia-api-key", header::HeaderValue::from_str(api_key)?);
 
         let http = Client::builder()
             .default_headers(headers)
@@ -49,10 +46,17 @@ impl SearchClient {
             .await
             .context("Can't make HTTP GET request")?;
 
-        Ok(response
+        let status = response.status();
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("HTTP {status}: {body}");
+        }
+
+        response
             .json::<T>()
             .await
-            .context("Can't deserialize response.")?)
+            .context("Can't deserialize response")
     }
 }
 
@@ -67,7 +71,10 @@ mod tests {
         let server = MockServer::start();
 
         let mock = server.mock(|when, then| {
-            when.method(GET).path("/1/testing");
+            when.method(GET)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
             then.status(200)
                 .header("content-type", "application/json")
                 .body(r#"{"items": []}"#);
@@ -83,5 +90,29 @@ mod tests {
         client.get::<serde_json::Value>("/testing").await.unwrap();
 
         mock.assert();
+    }
+
+    #[tokio::test]
+    async fn get_fails_with_good_error() {
+        let server = MockServer::start();
+
+        server.mock(|when, then| {
+            when.method(GET).path("/1/testing");
+            then.status(404)
+                .header("content-type", "application/json")
+                .body(r#"{"message": "Index not found"}"#);
+        });
+
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        let result = client.get::<serde_json::Value>("/testing").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Index not found"));
     }
 }

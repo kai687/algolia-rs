@@ -28,6 +28,13 @@ impl Credentials {
 }
 
 #[test]
+fn new_credentials() {
+    let credentials = Credentials::new(Some("test-app".to_string()), Some("test-key".to_string())).unwrap();
+    assert_eq!(credentials.app_id, "test-app");
+    assert_eq!(credentials.api_key, "test-key");
+}
+
+#[test]
 fn new_errors_without_application_id() {
     let err = Credentials::new(None, Some("api_key".to_string())).unwrap_err();
     assert!(err.to_string().contains("Missing credential"));

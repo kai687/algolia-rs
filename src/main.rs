@@ -1,5 +1,4 @@
 use anyhow::Result;
-use tokio;
 
 pub mod algolia;
 pub mod auth;
