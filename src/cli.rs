@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::algolia::search;
 use crate::auth;
 use crate::cmd;
-use crate::algolia::search;
 
 /// CLI for working with Algolia's APIs
 #[derive(Parser)]

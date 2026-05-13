@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
+use serde::de::DeserializeOwned;
 
 pub mod list_indices;
 
@@ -14,6 +15,11 @@ pub struct SearchClient {
 impl SearchClient {
     /// Create a new Search API client
     pub fn new(app_id: &str, api_key: &str) -> Result<Self> {
+        let base_url = format!("https://{}-dsn.algolia.net/1", &app_id);
+        Self::new_with_base_url(app_id, api_key, base_url)
+    }
+    /// Constructor for easier testing
+    pub fn new_with_base_url(app_id: &str, api_key: &str, base_url: String) -> Result<Self> {
         let mut headers = header::HeaderMap::new();
         headers.insert(
             "x-algolia-application-id",
@@ -24,22 +30,58 @@ impl SearchClient {
             header::HeaderValue::from_str(&api_key)?,
         );
 
-        let base_url = format!("https://{}-dsn.algolia.net/1", &app_id);
-
-        let http = Client::builder().default_headers(headers).build().with_context(|| "Can't create search client")?;
+        let http = Client::builder()
+            .default_headers(headers)
+            .build()
+            .context("Can't create search client")?;
 
         Ok(Self { http, base_url })
     }
 
     /// Wrapper for GET requests (prints JSON response)
-    async fn get(&self, path: &str) -> Result<()> {
+    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
 
-        let response = self.http.get(request_url).send().await.with_context(|| "Can't make HTTP GET request")?;
-        let body: serde_json::Value = response.json().await.with_context(|| "Can't get the response as JSON")?;
+        let response = self
+            .http
+            .get(request_url)
+            .send()
+            .await
+            .context("Can't make HTTP GET request")?;
 
-        println!("{}", serde_json::to_string_pretty(&body).with_context(|| "Can't pretty print JSON")?);
+        Ok(response
+            .json::<T>()
+            .await
+            .context("Can't deserialize response.")?)
+    }
+}
 
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::Method::GET;
+    use httpmock::MockServer;
+
+    #[tokio::test]
+    async fn get_sends_request() {
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/1/testing");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"items": []}"#);
+        });
+
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        client.get::<serde_json::Value>("/testing").await.unwrap();
+
+        mock.assert();
     }
 }
