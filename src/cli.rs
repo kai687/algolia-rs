@@ -81,17 +81,18 @@ enum ProfileCommands {
         /// Output format
         #[arg(short, long, value_enum)]
         output: Option<OutputFormat>,
-    }
+    },
 }
 
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
-    let auth = auth::Credentials::from_env()?;
-    let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
             IndicesCommands::List { output } => {
+                let auth = auth::Credentials::from_env()?;
+                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+
                 // Set output if not specified by command line option
                 let output_format = output.unwrap_or_else(|| {
                     if io::stdout().is_terminal() {
@@ -116,8 +117,7 @@ pub async fn run() -> Result<()> {
                 });
                 cmd::list_profiles(&output_format, io::stdout())?
             }
-        }
-
+        },
 
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

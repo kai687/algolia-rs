@@ -12,7 +12,11 @@ use tabled::{
 };
 
 /// List all indices
-pub async fn list_indices<W: std::io::Write>(client: &SearchClient, output: &OutputFormat, mut writer: W) -> Result<()> {
+pub async fn list_indices<W: std::io::Write>(
+    client: &SearchClient,
+    output: &OutputFormat,
+    mut writer: W,
+) -> Result<()> {
     let response = client
         .list_indices()
         .await

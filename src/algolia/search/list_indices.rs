@@ -207,7 +207,6 @@ mod tests {
         assert_eq!(item.index_type, "primary (2 replicas)")
     }
 
-
     #[test]
     fn item_for_replica_index() {
         let item = ListIndexItem {
