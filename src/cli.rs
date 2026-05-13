@@ -3,6 +3,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
 use std::io;
+use std::io::IsTerminal;
 
 use crate::algolia::search;
 use crate::auth;
@@ -59,8 +60,9 @@ enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
     List {
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Pretty)]
-        output: OutputFormat,
+        /// Output format
+        #[arg(short, long, value_enum)]
+        output: Option<OutputFormat>,
     },
 }
 
@@ -71,7 +73,17 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
-            IndicesCommands::List { output } => cmd::list_indices(&client, &output).await?,
+            IndicesCommands::List { output } => {
+                // Set output if not specified by command line option
+                let output_format = output.unwrap_or_else(|| {
+                    if io::stdout().is_terminal() {
+                        OutputFormat::Pretty
+                    } else {
+                        OutputFormat::Json
+                    }
+                });
+                cmd::list_indices(&client, &output_format).await?
+            },
         },
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
