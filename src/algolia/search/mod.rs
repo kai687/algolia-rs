@@ -3,8 +3,11 @@ use reqwest::{Client, header};
 
 pub mod list_indices;
 
+/// Client for requests to the Algolia Search API
 pub struct SearchClient {
+    /// The HTTP client
     http: Client,
+    /// The base URL for making requests
     base_url: String,
 }
 

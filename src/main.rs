@@ -2,6 +2,7 @@ use anyhow::Result;
 use tokio;
 
 pub mod algolia;
+pub mod auth;
 pub mod cli;
 pub mod cmd;
 

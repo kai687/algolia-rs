@@ -1,7 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::auth;
 use crate::cmd;
+use crate::algolia::search;
 
 /// CLI for working with Algolia's APIs
 #[derive(Parser)]
@@ -30,10 +32,12 @@ enum IndicesCommands {
 
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
+    let auth = auth::Credentials::from_env()?;
+    let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
-            IndicesCommands::List => cmd::list_indices().await?,
+            IndicesCommands::List => cmd::list_indices(&client).await?,
         },
     }
 
