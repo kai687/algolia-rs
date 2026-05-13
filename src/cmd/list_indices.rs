@@ -12,7 +12,7 @@ use tabled::{
 };
 
 /// List all indices
-pub async fn list_indices(client: &SearchClient, output: &OutputFormat) -> Result<()> {
+pub async fn list_indices<W: std::io::Write>(client: &SearchClient, output: &OutputFormat, mut writer: W) -> Result<()> {
     let response = client
         .list_indices()
         .await
@@ -23,7 +23,7 @@ pub async fn list_indices(client: &SearchClient, output: &OutputFormat) -> Resul
             let json = serde_json::to_string_pretty(&response)
                 .context("Failed to convert response back to JSON.")?;
 
-            println!("{}", json);
+            writeln!(writer, "{}", json)?;
         }
         OutputFormat::Pretty => {
             let indices: Vec<ListIndexItem> = response
@@ -45,7 +45,7 @@ pub async fn list_indices(client: &SearchClient, output: &OutputFormat) -> Resul
             table.modify(Columns::one(1), Alignment::right());
             // Size column
             table.modify(Columns::one(2), Alignment::right());
-            println!("{}", table);
+            writeln!(writer, "{}", table)?;
         }
     }
 

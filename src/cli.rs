@@ -82,7 +82,7 @@ pub async fn run() -> Result<()> {
                         OutputFormat::Json
                     }
                 });
-                cmd::list_indices(&client, &output_format).await?
+                cmd::list_indices(&client, &output_format, io::stdout()).await?
             },
         },
         Commands::Completions { shell } => {

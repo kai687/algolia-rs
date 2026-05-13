@@ -159,4 +159,75 @@ mod tests {
 
         mock.assert();
     }
+
+    /// Test helper for with_index_type tests
+    fn item() -> ListIndexItem {
+        ListIndexItem {
+            name: "test-index".to_string(),
+            entries: 0,
+            data_size: 0,
+            created_at: "2026-04-29T08:50:12.848Z".to_string(),
+            updated_at: "2026-04-29T08:50:12.848Z".to_string(),
+            file_size: 0,
+            last_build_time_s: 0,
+            number_of_pending_tasks: 0,
+            primary: None,
+            replicas: None,
+            pending_task: false,
+            r#virtual: None,
+            index_type: String::new(),
+        }
+    }
+
+    #[test]
+    fn item_for_regular_index() {
+        let item = item().with_index_type();
+        assert_eq!(item.index_type, "")
+    }
+
+    #[test]
+    fn item_for_primary_index_with_one_replica() {
+        let item = ListIndexItem {
+            replicas: Some(vec!["replica_index".to_string()]),
+            ..item()
+        }
+        .with_index_type();
+
+        assert_eq!(item.index_type, "primary (1 replica)")
+    }
+
+    #[test]
+    fn item_for_primary_index_with_two_replicas() {
+        let item = ListIndexItem {
+            replicas: Some(vec!["replica_1".to_string(), "replica_2".to_string()]),
+            ..item()
+        }
+        .with_index_type();
+
+        assert_eq!(item.index_type, "primary (2 replicas)")
+    }
+
+
+    #[test]
+    fn item_for_replica_index() {
+        let item = ListIndexItem {
+            primary: Some("primary-index".to_string()),
+            ..item()
+        }
+        .with_index_type();
+
+        assert_eq!(item.index_type, "replica of primary-index")
+    }
+
+    #[test]
+    fn item_for_virtual_replica() {
+        let item = ListIndexItem {
+            primary: Some("primary-index".to_string()),
+            r#virtual: Some(true),
+            ..item()
+        }
+        .with_index_type();
+
+        assert_eq!(item.index_type, "virtual replica of primary-index")
+    }
 }
