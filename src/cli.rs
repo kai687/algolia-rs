@@ -1,5 +1,6 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
 
 use crate::algolia::search;
 use crate::auth;
@@ -21,6 +22,13 @@ enum Commands {
         #[command(subcommand)]
         subcommand: IndicesCommands,
     },
+
+    /// Generate completion scripts
+    Completions {
+        /// The shell for which to generate completions
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand)]
@@ -39,6 +47,12 @@ pub async fn run() -> Result<()> {
         Commands::Indices { subcommand } => match subcommand {
             IndicesCommands::List => cmd::list_indices(&client).await?,
         },
+        Commands::Completions { shell } => generate(
+            shell,
+            &mut Cli::command(),
+            "algolia-rs",
+            &mut std::io::stdout(),
+        ),
     }
 
     Ok(())
