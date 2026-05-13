@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
 
+pub mod list_indices;
+
 pub struct SearchClient {
     http: Client,
     base_url: String,
@@ -36,10 +38,5 @@ impl SearchClient {
         println!("{}", serde_json::to_string_pretty(&body).with_context(|| "Can't pretty print JSON")?);
 
         Ok(())
-    }
-
-    /// List all indices
-    pub async fn list_indices(&self) -> Result<()> {
-        self.get("/indexes").await
     }
 }
