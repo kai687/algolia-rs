@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
 use std::io;
@@ -8,7 +8,16 @@ use crate::algolia::search;
 use crate::auth;
 use crate::cmd;
 
-#[derive(clap::ValueEnum, Clone)]
+/// Handle different output options
+#[derive(Clone, Default, clap::ValueEnum)]
+pub enum OutputFormat {
+    #[default]
+    Pretty,
+    Json,
+}
+
+/// clap_complete::Shell + Nushell
+#[derive(Clone, clap::ValueEnum)]
 pub enum AnyShell {
     Bash,
     Zsh,
@@ -21,14 +30,14 @@ pub enum AnyShell {
 }
 
 /// CLI for working with Algolia's APIs
-#[derive(Parser)]
+#[derive(clap::Parser)]
 #[command(name = "Algolia", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(clap::Subcommand)]
 enum Commands {
     /// Work with indices
     #[command(visible_aliases = ["index", "i"])]
@@ -45,11 +54,14 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(clap::Subcommand)]
 enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
-    List,
+    List {
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Pretty)]
+        output: OutputFormat,
+    },
 }
 
 pub async fn run() -> Result<()> {
@@ -59,7 +71,7 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
-            IndicesCommands::List => cmd::list_indices(&client).await?,
+            IndicesCommands::List { output } => cmd::list_indices(&client, &output).await?,
         },
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
