@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
 use std::io;
 
@@ -61,7 +61,7 @@ pub async fn run() -> Result<()> {
         Commands::Indices { subcommand } => match subcommand {
             IndicesCommands::List => cmd::list_indices(&client).await?,
         },
-        Commands::Completions { shell } =>  {
+        Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             let name = env!("CARGO_PKG_NAME");
 
@@ -71,7 +71,9 @@ pub async fn run() -> Result<()> {
                 AnyShell::Zsh => generate(Shell::Zsh, &mut cmd, name, &mut io::stdout()),
                 AnyShell::Fish => generate(Shell::Fish, &mut cmd, name, &mut io::stdout()),
                 AnyShell::Elvish => generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout()),
-                AnyShell::PowerShell => generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout()),
+                AnyShell::PowerShell => {
+                    generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout())
+                }
                 AnyShell::Nushell => generate(Nushell, &mut cmd, name, &mut io::stdout()),
             }
         }

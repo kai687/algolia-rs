@@ -29,7 +29,8 @@ impl Credentials {
 
 #[test]
 fn new_credentials() {
-    let credentials = Credentials::new(Some("test-app".to_string()), Some("test-key".to_string())).unwrap();
+    let credentials =
+        Credentials::new(Some("test-app".to_string()), Some("test-key".to_string())).unwrap();
     assert_eq!(credentials.app_id, "test-app");
     assert_eq!(credentials.api_key, "test-key");
 }
