@@ -65,7 +65,7 @@ enum IndicesCommands {
         output: Option<OutputFormat>,
     },
 
-    /// Copy indices
+    /// Copy an index
     #[command(visible_aliases = ["cp"])]
     Copy {
         /// Index to copy
@@ -78,7 +78,7 @@ enum IndicesCommands {
         scope: Vec<search::operation_index::OperationScope>,
     },
 
-    /// Move (rename) indices
+    /// Move (rename) an index
     #[command(visible_aliases = ["mv"])]
     Move {
         /// Index to move or rename
@@ -87,6 +87,13 @@ enum IndicesCommands {
         #[arg(short, long)]
         destination: String,
     },
+
+    /// Delete an index
+    #[command(visible_aliases = ["del"])]
+    Delete {
+        /// Index to delete
+        index_name: String
+    }
 }
 
 pub async fn run() -> Result<()> {
@@ -125,6 +132,12 @@ pub async fn run() -> Result<()> {
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
                 cmd::move_index(&client, index_name, &destination, io::stdout()).await?;
+            }
+
+            IndicesCommands::Delete { index_name } => {
+                let auth = auth::Credentials::load()?;
+                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+                cmd::delete_index(&client, index_name, io::stdout()).await?;
             }
         },
 

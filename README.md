@@ -10,3 +10,6 @@ that's properly supported.
 ## Commands
 
 - [X] `algolia indices list`
+- [X] `algolia indices copy`
+- [X] `algolia indices move`
+- [X] `algolia indices delete`

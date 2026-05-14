@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub mod list_indices;
 pub mod operation_index;
+pub mod delete_index;
 
 /// Client for requests to the Algolia Search API
 pub struct SearchClient {
@@ -19,6 +20,7 @@ impl SearchClient {
         let base_url = format!("https://{}-dsn.algolia.net/1", &app_id);
         Self::new_with_base_url(app_id, api_key, base_url)
     }
+
     /// Constructor for easier testing
     pub fn new_with_base_url(app_id: &str, api_key: &str, base_url: String) -> Result<Self> {
         let mut headers = header::HeaderMap::new();
@@ -66,6 +68,12 @@ impl SearchClient {
         let request_url = format!("{}{}", self.base_url, path);
         self.send(self.http.post(request_url).json(&data)).await
     }
+
+    /// Wrapper for DELETE requests (Returns JSON response)
+    pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let request_url = format!("{}{}", self.base_url, path);
+        self.send(self.http.delete(request_url)).await
+    }
 }
 
 /// Shared response with Task ID
@@ -80,7 +88,7 @@ pub struct ResponseWithTaskID {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use httpmock::Method::{GET, POST};
+    use httpmock::Method::{GET, POST, DELETE};
     use httpmock::MockServer;
 
     #[tokio::test]
@@ -198,6 +206,32 @@ mod tests {
             .post::<serde_json::Value, serde_json::Value>("/testing", None)
             .await
             .unwrap();
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn delete_sends_request() {
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(DELETE)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"status": "deleted"}"#);
+        });
+
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        client.delete::<serde_json::Value>("/testing").await.unwrap();
 
         mock.assert();
     }

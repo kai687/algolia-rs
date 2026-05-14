@@ -6,3 +6,6 @@ pub use copy_index::copy_index;
 
 pub mod move_index;
 pub use move_index::move_index;
+
+pub mod delete_index;
+pub use delete_index::delete_index;
