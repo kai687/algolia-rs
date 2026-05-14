@@ -1,4 +1,7 @@
+use std::fmt;
+
 use anyhow::{Context, Result};
+use colored::Colorize;
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -80,10 +83,22 @@ impl SearchClient {
 /// Shared response with Task ID
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ResponseWithTaskID {
+pub struct UpdatedAtResponse {
     #[serde(rename = "taskID")]
     pub task_id: u64,
     pub updated_at: String,
+}
+
+impl fmt::Display for UpdatedAtResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} Task {} queued at {}",
+            "🗸 ".green(),
+            self.task_id.to_string().dimmed(),
+            self.updated_at.dimmed()
+        )
+    }
 }
 
 #[cfg(test)]

@@ -36,6 +36,10 @@ pub enum AnyShell {
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Output format
+    #[arg(short, long, global = true)]
+    output: Option<OutputFormat>,
 }
 
 #[derive(clap::Subcommand)]
@@ -59,11 +63,7 @@ enum Commands {
 enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
-    List {
-        /// Output format
-        #[arg(short, long)]
-        output: Option<OutputFormat>,
-    },
+    List,
 
     /// Copy an index
     #[command(visible_aliases = ["cp"])]
@@ -99,20 +99,21 @@ enum IndicesCommands {
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // Set output if not specified by command line option
+    let output_format = cli.output.unwrap_or_else(|| {
+        if io::stdout().is_terminal() {
+            OutputFormat::Pretty
+        } else {
+            OutputFormat::Json
+        }
+    });
+
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
-            IndicesCommands::List { output } => {
+            IndicesCommands::List => {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
-                // Set output if not specified by command line option
-                let output_format = output.unwrap_or_else(|| {
-                    if io::stdout().is_terminal() {
-                        OutputFormat::Pretty
-                    } else {
-                        OutputFormat::Json
-                    }
-                });
                 cmd::list_indices(&client, &output_format, io::stdout()).await?;
             }
 
@@ -124,8 +125,15 @@ pub async fn run() -> Result<()> {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
-                cmd::copy_index(&client, index_name, &destination, Some(scope), io::stdout())
-                    .await?;
+                cmd::copy_index(
+                    &client,
+                    index_name,
+                    &destination,
+                    Some(scope),
+                    &output_format,
+                    io::stdout(),
+                )
+                .await?;
             }
 
             IndicesCommands::Move {
@@ -135,7 +143,14 @@ pub async fn run() -> Result<()> {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
-                cmd::move_index(&client, index_name, &destination, io::stdout()).await?;
+                cmd::move_index(
+                    &client,
+                    index_name,
+                    &destination,
+                    &output_format,
+                    io::stdout(),
+                )
+                .await?;
             }
 
             IndicesCommands::Delete { index_name } => {

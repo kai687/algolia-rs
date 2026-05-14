@@ -1,6 +1,7 @@
 use super::SearchClient;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,6 +11,18 @@ pub struct DeletedAtResponse {
     pub task_id: u64,
     /// The time when the deletion was requested
     pub deleted_at: String,
+}
+
+impl fmt::Display for DeletedAtResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} Task {} queued at {}",
+            "🗸 ".green(),
+            self.task_id.to_string().dimmed(),
+            self.deleted_at.dimmed()
+        )
+    }
 }
 
 impl SearchClient {

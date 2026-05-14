@@ -1,4 +1,4 @@
-use super::{ResponseWithTaskID, SearchClient};
+use super::{SearchClient, UpdatedAtResponse};
 use anyhow::Result;
 use serde::Serialize;
 
@@ -42,7 +42,7 @@ impl SearchClient {
         &self,
         index_name: &str,
         data: &CopyOperation,
-    ) -> Result<ResponseWithTaskID> {
+    ) -> Result<UpdatedAtResponse> {
         let request_url = format!("/indexes/{index_name}/operation");
 
         self.post(&request_url, Some(&data)).await
@@ -53,7 +53,7 @@ impl SearchClient {
         &self,
         index_name: &str,
         data: &MoveOperation,
-    ) -> Result<ResponseWithTaskID> {
+    ) -> Result<UpdatedAtResponse> {
         let request_url = format!("/indexes/{index_name}/operation");
 
         self.post(&request_url, Some(&data)).await
