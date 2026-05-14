@@ -18,4 +18,36 @@ impl SearchClient {
         let request_url = format!("/indexes/{index_name}");
         self.delete(&request_url).await
     }
-} 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::Method::DELETE;
+    use httpmock::MockServer;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn delete_index() {
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(DELETE).path("/1/indexes/test-index");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"taskID": 123456, "deletedAt": "2026-05-14T19:44"}));
+        });
+
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        let response = client.delete_index("test-index").await.unwrap();
+        mock.assert();
+        assert_eq!(response.task_id, 123_456);
+        assert!(!response.deleted_at.is_empty());
+    }
+}

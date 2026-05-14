@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+pub mod delete_index;
 pub mod list_indices;
 pub mod operation_index;
-pub mod delete_index;
 pub mod wait_for_indexing_task;
 
 /// Client for requests to the Algolia Search API
@@ -89,8 +89,9 @@ pub struct ResponseWithTaskID {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use httpmock::Method::{GET, POST, DELETE};
+    use httpmock::Method::{DELETE, GET, POST};
     use httpmock::MockServer;
+    use serde_json::json;
 
     #[tokio::test]
     async fn get_sends_request() {
@@ -103,7 +104,7 @@ mod tests {
                 .header("x-algolia-api-key", "test-key");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"items": []}"#);
+                .json_body(json!({"items": []}));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -126,7 +127,7 @@ mod tests {
             when.method(GET).path("/1/testing");
             then.status(404)
                 .header("content-type", "application/json")
-                .body(r#"{"message": "Index not found"}"#);
+                .json_body(json!({"message": "Index not found"}));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -159,7 +160,7 @@ mod tests {
                 .header("x-algolia-api-key", "test-key");
             then.status(201)
                 .header("content-type", "application/json")
-                .body(r#"{"message": "created"}"#);
+                .json_body(json!({"message": "created"}));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -193,7 +194,7 @@ mod tests {
                 .header("x-algolia-api-key", "test-key");
             then.status(201)
                 .header("content-type", "application/json")
-                .body(r#"{"message": "created"}"#);
+                .json_body(json!({"message": "created"}));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -222,7 +223,7 @@ mod tests {
                 .header("x-algolia-api-key", "test-key");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"status": "deleted"}"#);
+                .json_body(json!({"status": "deleted"}));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -232,7 +233,10 @@ mod tests {
         )
         .unwrap();
 
-        client.delete::<serde_json::Value>("/testing").await.unwrap();
+        client
+            .delete::<serde_json::Value>("/testing")
+            .await
+            .unwrap();
 
         mock.assert();
     }

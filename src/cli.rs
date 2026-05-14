@@ -92,8 +92,8 @@ enum IndicesCommands {
     #[command(visible_aliases = ["del"])]
     Delete {
         /// Index to delete
-        index_name: String
-    }
+        index_name: String,
+    },
 }
 
 pub async fn run() -> Result<()> {
@@ -124,10 +124,14 @@ pub async fn run() -> Result<()> {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
-                cmd::copy_index(&client, index_name, &destination, Some(scope), io::stdout()).await?;
+                cmd::copy_index(&client, index_name, &destination, Some(scope), io::stdout())
+                    .await?;
             }
 
-            IndicesCommands::Move { index_name, destination } => {
+            IndicesCommands::Move {
+                index_name,
+                destination,
+            } => {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 

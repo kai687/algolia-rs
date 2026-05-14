@@ -126,13 +126,10 @@ mod tests {
             when.method(POST).path("/1/indexes/test-index/operation");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(
-                    serde_json::json!({
-                        "taskID": 123_456,
-                        "updatedAt": "2026-04-29T08:50:12.848Z",
-                    })
-                    .to_string(),
-                );
+                .json_body(json!({
+                    "taskID": 123_456,
+                    "updatedAt": "2026-04-29T08:50:12.848Z",
+                }));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -147,9 +144,10 @@ mod tests {
             scope: None,
         };
 
-        client.copy_index("test-index", &data).await.unwrap();
-
+        let response = client.copy_index("test-index", &data).await.unwrap();
         mock.assert();
+        assert_eq!(response.task_id, 123_456);
+        assert!(!response.updated_at.is_empty());
     }
 
     #[tokio::test]
@@ -160,13 +158,10 @@ mod tests {
             when.method(POST).path("/1/indexes/test-index/operation");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(
-                    serde_json::json!({
-                        "taskID": 123_456,
-                        "updatedAt": "2026-04-29T08:50:12.848Z",
-                    })
-                    .to_string(),
-                );
+                .json_body(json!({
+                    "taskID": 123_456,
+                    "updatedAt": "2026-04-29T08:50:12.848Z",
+                }));
         });
 
         let client = SearchClient::new_with_base_url(
@@ -180,8 +175,9 @@ mod tests {
             destination: "test-destination".to_string(),
         };
 
-        client.move_index("test-index", &data).await.unwrap();
-
+        let response = client.move_index("test-index", &data).await.unwrap();
         mock.assert();
+        assert_eq!(response.task_id, 123_456);
+        assert!(!response.updated_at.is_empty());
     }
 }

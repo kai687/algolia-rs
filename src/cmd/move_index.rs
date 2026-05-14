@@ -1,7 +1,4 @@
-use crate::algolia::search::{
-    SearchClient,
-    operation_index::MoveOperation,
-};
+use crate::algolia::search::{SearchClient, operation_index::MoveOperation};
 use anyhow::{Context, Result};
 
 /// Copy an index

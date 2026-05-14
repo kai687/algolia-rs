@@ -129,25 +129,22 @@ mod tests {
             when.method(GET).path("/1/indexes");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(
-                    serde_json::json!({
-                        "items": [
-                            {
-                                "name": "Test",
-                                "entries": 0,
-                                "createdAt": "2026-04-29T08:50:12.848Z",
-                                "updatedAt": "2026-04-29T08:50:12.848Z",
-                                "dataSize": 1,
-                                "fileSize": 1,
-                                "lastBuildTimeS": 1,
-                                "numberOfPendingTasks": 0,
-                                "pendingTask": false
-                            }
-                        ],
-                        "nbPages": 1
-                    })
-                    .to_string(),
-                );
+                .json_body(serde_json::json!({
+                    "items": [
+                        {
+                            "name": "Test",
+                            "entries": 0,
+                            "createdAt": "2026-04-29T08:50:12.848Z",
+                            "updatedAt": "2026-04-29T08:50:12.848Z",
+                            "dataSize": 1,
+                            "fileSize": 1,
+                            "lastBuildTimeS": 1,
+                            "numberOfPendingTasks": 0,
+                            "pendingTask": false
+                        }
+                    ],
+                    "nbPages": 1
+                }));
         });
 
         let client = SearchClient::new_with_base_url(

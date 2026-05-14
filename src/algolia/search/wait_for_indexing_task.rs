@@ -66,11 +66,11 @@ mod tests {
             when.method(GET).path("/1/indexes/test-index/task/123456");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(serde_json::json!({"status": "published"}).to_string());
+                .json_body(serde_json::json!({"status": "published"}));
         });
 
         let index_name = "test-index";
-        let task_id: u64 = 12_3456;
+        let task_id: u64 = 123_456;
 
         let client = SearchClient::new_with_base_url(
             "test-app",
