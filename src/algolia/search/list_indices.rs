@@ -157,9 +157,16 @@ mod tests {
         )
         .unwrap();
 
-        client.list_indices().await.unwrap();
+        let response = client.list_indices().await.unwrap();
 
         mock.assert();
+        assert_eq!(response.nb_pages, 1);
+        assert_eq!(response.items.len(), 1);
+        let item = response.items.first().unwrap();
+        assert_eq!(item.name, "Test");
+        assert_eq!(item.entries, 0);
+        assert_eq!(item.data_size, 1);
+        assert!(!item.pending_task);
     }
 
     /// Test helper for `with_index_type` tests

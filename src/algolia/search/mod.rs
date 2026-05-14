@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 pub mod list_indices;
 pub mod operation_index;
 pub mod delete_index;
+pub mod wait_for_indexing_task;
 
 /// Client for requests to the Algolia Search API
 pub struct SearchClient {
