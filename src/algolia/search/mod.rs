@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub mod list_indices;
+pub mod operation_index;
 
 /// Client for requests to the Algolia Search API
 pub struct SearchClient {
@@ -35,19 +36,10 @@ impl SearchClient {
         Ok(Self { http, base_url })
     }
 
-    /// Wrapper for GET requests (prints JSON response)
-    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let request_url = format!("{}{}", self.base_url, path);
-
-        let response = self
-            .http
-            .get(request_url)
-            .send()
-            .await
-            .context("Can't make HTTP GET request")?;
-
+    /// Wrapper for generic request sends and response serialization
+    async fn send<T: DeserializeOwned>(&self, request: reqwest::RequestBuilder) -> Result<T> {
+        let response = request.send().await.context("Can't make HTTP request")?;
         let status = response.status();
-
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             anyhow::bail!("HTTP {status}: {body}");
@@ -58,12 +50,37 @@ impl SearchClient {
             .await
             .context("Can't deserialize response")
     }
+
+    /// Wrapper for GET requests (returns JSON response)
+    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let request_url = format!("{}{}", self.base_url, path);
+        self.send(self.http.get(request_url)).await
+    }
+
+    /// Wrapper for POST requests (Returns JSON response)
+    pub async fn post<T: DeserializeOwned, D: Serialize>(
+        &self,
+        path: &str,
+        data: Option<&D>,
+    ) -> Result<T> {
+        let request_url = format!("{}{}", self.base_url, path);
+        self.send(self.http.post(request_url).json(&data)).await
+    }
+}
+
+/// Shared response with Task ID
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ResponseWithTaskID {
+    #[serde(rename = "taskID")]
+    pub task_id: u64,
+    pub updated_at: String,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use httpmock::Method::GET;
+    use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
 
     #[tokio::test]
@@ -114,5 +131,74 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Index not found"));
+    }
+
+    #[derive(Serialize)]
+    struct TestData {
+        foo: String,
+        bar: String,
+    }
+
+    #[tokio::test]
+    async fn post_sends_request_with_data() {
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
+            then.status(201)
+                .header("content-type", "application/json")
+                .body(r#"{"message": "created"}"#);
+        });
+
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        let data = TestData {
+            foo: "foo".to_string(),
+            bar: "bar".to_string(),
+        };
+
+        client
+            .post::<serde_json::Value, TestData>("/testing", Some(&data))
+            .await
+            .unwrap();
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn post_sends_request_without_data() {
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
+            then.status(201)
+                .header("content-type", "application/json")
+                .body(r#"{"message": "created"}"#);
+        });
+
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        client
+            .post::<serde_json::Value, serde_json::Value>("/testing", None)
+            .await
+            .unwrap();
+
+        mock.assert();
     }
 }
