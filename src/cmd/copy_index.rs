@@ -6,6 +6,7 @@ use crate::{
     cli::OutputFormat,
 };
 use anyhow::{Context, Result};
+use colored::Colorize;
 
 /// Copy an index
 pub async fn copy_index<W: std::io::Write>(
@@ -14,6 +15,7 @@ pub async fn copy_index<W: std::io::Write>(
     destination: &str,
     scope: Option<Vec<OperationScope>>,
     output: &OutputFormat,
+    wait: bool,
     mut writer: W,
 ) -> Result<()> {
     let data = CopyOperation {
@@ -35,6 +37,17 @@ pub async fn copy_index<W: std::io::Write>(
         OutputFormat::Pretty => {
             writeln!(writer, "{response}")?;
         }
+    }
+
+    if wait {
+        client.wait_for_task(destination, response.task_id).await?;
+        writeln!(
+            writer,
+            "{} Copied index {} to {}",
+            "🗸".green(),
+            index_name.bold(),
+            destination.bold()
+        )?;
     }
 
     Ok(())

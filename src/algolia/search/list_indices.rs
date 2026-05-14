@@ -4,7 +4,16 @@ use bytesize::ByteSize;
 use chrono::DateTime;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use tabled::Tabled;
+use tabled::{
+    Table,
+    settings::{
+        Alignment, Color, Style,
+        object::{Columns, Rows},
+        style::HorizontalLine,
+    },
+};
 use timeago::Formatter;
 
 /// Format large numbers
@@ -38,7 +47,7 @@ pub struct ListIndicesResponse {
     pub nb_pages: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Tabled)]
+#[derive(Clone, Debug, Serialize, Deserialize, Tabled)]
 #[serde(rename_all = "camelCase")]
 #[tabled(rename_all = "UPPERCASE")]
 #[must_use]
@@ -85,6 +94,32 @@ pub struct ListIndexItem {
     #[serde(skip)]
     #[tabled(rename = "INDEX TYPE")]
     pub index_type: String,
+}
+
+impl fmt::Display for ListIndicesResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let indices: Vec<ListIndexItem> = self
+            .items
+            .iter()
+            .cloned()
+            .map(ListIndexItem::with_index_type)
+            .collect();
+
+        let style = Style::modern_rounded()
+            .horizontals([(1, HorizontalLine::inherit(Style::modern_rounded()))])
+            .remove_vertical()
+            .remove_horizontal()
+            .remove_frame();
+
+        let mut table = Table::new(indices);
+        table.with(style);
+        table.modify(Rows::first(), Color::FG_BLUE);
+        // Records column
+        table.modify(Columns::one(1), Alignment::right());
+        // Size column
+        table.modify(Columns::one(2), Alignment::right());
+        write!(f, "{table}")
+    }
 }
 
 impl ListIndexItem {

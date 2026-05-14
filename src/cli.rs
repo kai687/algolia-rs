@@ -17,6 +17,22 @@ pub enum OutputFormat {
     Json,
 }
 
+/// CLI for working with Algolia's APIs
+#[derive(clap::Parser)]
+#[command(name = "Algolia", version, args_conflicts_with_subcommands = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    /// Output format
+    #[arg(short, long, global = true)]
+    output: Option<OutputFormat>,
+
+    /// Wait for operations
+    #[arg(short, long, global = true)]
+    wait: bool,
+}
+
 /// `clap_complete::Shell` + Nushell
 #[derive(Clone, clap::ValueEnum)]
 pub enum AnyShell {
@@ -28,18 +44,6 @@ pub enum AnyShell {
     Elvish,
     #[value(alias = "nu")]
     Nushell,
-}
-
-/// CLI for working with Algolia's APIs
-#[derive(clap::Parser)]
-#[command(name = "Algolia", version)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-
-    /// Output format
-    #[arg(short, long, global = true)]
-    output: Option<OutputFormat>,
 }
 
 #[derive(clap::Subcommand)]
@@ -56,6 +60,9 @@ enum Commands {
         /// The shell for which to generate completions
         #[arg(value_enum)]
         shell: AnyShell,
+
+        #[arg(long, global = false, hide = true)]
+        output: bool,
     },
 }
 
@@ -63,7 +70,10 @@ enum Commands {
 enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
-    List,
+    List {
+        #[arg(long, global = false, hide = true)]
+        wait: bool,
+    },
 
     /// Copy an index
     #[command(visible_aliases = ["cp"])]
@@ -110,7 +120,7 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
-            IndicesCommands::List => {
+            IndicesCommands::List { wait: _ } => {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
@@ -131,6 +141,7 @@ pub async fn run() -> Result<()> {
                     &destination,
                     Some(scope),
                     &output_format,
+                    cli.wait,
                     io::stdout(),
                 )
                 .await?;
@@ -148,6 +159,7 @@ pub async fn run() -> Result<()> {
                     index_name,
                     &destination,
                     &output_format,
+                    cli.wait,
                     io::stdout(),
                 )
                 .await?;
@@ -156,11 +168,12 @@ pub async fn run() -> Result<()> {
             IndicesCommands::Delete { index_name } => {
                 let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
-                cmd::delete_index(&client, index_name, io::stdout()).await?;
+                cmd::delete_index(&client, index_name, &output_format, cli.wait, io::stdout())
+                    .await?;
             }
         },
 
-        Commands::Completions { shell } => {
+        Commands::Completions { shell, output: _ } => {
             let mut cmd = Cli::command();
             let name = env!("CARGO_PKG_NAME");
 

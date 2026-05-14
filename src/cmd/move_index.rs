@@ -3,6 +3,7 @@ use crate::{
     cli::OutputFormat,
 };
 use anyhow::{Context, Result};
+use colored::Colorize;
 
 /// Copy an index
 pub async fn move_index<W: std::io::Write>(
@@ -10,6 +11,7 @@ pub async fn move_index<W: std::io::Write>(
     index_name: String,
     destination: &str,
     output: &OutputFormat,
+    wait: bool,
     mut writer: W,
 ) -> Result<()> {
     let data = MoveOperation {
@@ -30,6 +32,17 @@ pub async fn move_index<W: std::io::Write>(
         OutputFormat::Pretty => {
             writeln!(writer, "{response}")?;
         }
+    }
+
+    if wait {
+        client.wait_for_task(destination, response.task_id).await?;
+        writeln!(
+            writer,
+            "{} Moved index {} to {}",
+            "🗸".green(),
+            index_name.bold(),
+            destination.bold()
+        )?;
     }
 
     Ok(())

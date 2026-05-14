@@ -1,6 +1,7 @@
 use std::fmt;
 
 use anyhow::{Context, Result};
+use chrono::DateTime;
 use colored::Colorize;
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -91,12 +92,13 @@ pub struct UpdatedAtResponse {
 
 impl fmt::Display for UpdatedAtResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
+        let dt = DateTime::parse_from_rfc3339(&self.updated_at).map_err(|_| fmt::Error)?;
+        write!(
             f,
             "{} Task {} queued at {}",
-            "🗸 ".green(),
+            "⧖".green(),
             self.task_id.to_string().dimmed(),
-            self.updated_at.dimmed()
+            dt.format("%Y-%m-%d %H:%M:%S").to_string().dimmed()
         )
     }
 }

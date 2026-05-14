@@ -1,5 +1,7 @@
 use super::SearchClient;
 use anyhow::Result;
+use chrono::DateTime;
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -15,12 +17,13 @@ pub struct DeletedAtResponse {
 
 impl fmt::Display for DeletedAtResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
+        let dt = DateTime::parse_from_rfc3339(&self.deleted_at).map_err(|_| fmt::Error)?;
+        write!(
             f,
             "{} Task {} queued at {}",
-            "🗸 ".green(),
+            "⧖".green(),
             self.task_id.to_string().dimmed(),
-            self.deleted_at.dimmed()
+            dt.format("%Y-%m-%d %H:%M:%S").to_string().dimmed()
         )
     }
 }
@@ -48,7 +51,7 @@ mod tests {
             when.method(DELETE).path("/1/indexes/test-index");
             then.status(200)
                 .header("content-type", "application/json")
-                .json_body(json!({"taskID": 123456, "deletedAt": "2026-05-14T19:44"}));
+                .json_body(json!({"taskID": 123_456, "deletedAt": "2026-05-14T19:44"}));
         });
 
         let client = SearchClient::new_with_base_url(
