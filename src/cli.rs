@@ -106,6 +106,12 @@ enum IndicesCommands {
     },
 }
 
+/// Helper function to initialize a Search API client
+fn require_client() -> Result<search::SearchClient> {
+    let auth = auth::Credentials::load()?;
+    search::SearchClient::new(&auth.app_id, &auth.api_key)
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
@@ -121,9 +127,7 @@ pub async fn run() -> Result<()> {
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
             IndicesCommands::List { wait: _ } => {
-                let auth = auth::Credentials::load()?;
-                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
-
+                let client = require_client()?;
                 cmd::list_indices(&client, &output_format, io::stdout()).await?;
             }
 
@@ -132,8 +136,7 @@ pub async fn run() -> Result<()> {
                 destination,
                 scope,
             } => {
-                let auth = auth::Credentials::load()?;
-                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+                let client = require_client()?;
 
                 cmd::copy_index(
                     &client,
@@ -151,8 +154,7 @@ pub async fn run() -> Result<()> {
                 index_name,
                 destination,
             } => {
-                let auth = auth::Credentials::load()?;
-                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+                let client = require_client()?;
 
                 cmd::move_index(
                     &client,
@@ -166,8 +168,8 @@ pub async fn run() -> Result<()> {
             }
 
             IndicesCommands::Delete { index_name } => {
-                let auth = auth::Credentials::load()?;
-                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+                let client = require_client()?;
+
                 cmd::delete_index(&client, index_name, &output_format, cli.wait, io::stdout())
                     .await?;
             }
