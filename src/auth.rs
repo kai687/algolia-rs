@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::{collections::HashMap, path::PathBuf};
 
-/// Helper function for Algolia credentials
+/// Algolia credentials
 #[derive(Debug)]
 pub struct Credentials {
     /// The Algolia application ID
@@ -9,42 +11,53 @@ pub struct Credentials {
     pub api_key: String,
 }
 
+/// Struct for keeping profile information
+#[derive(Debug, Deserialize)]
+struct Profile {
+    application_id: String,
+    api_key: String,
+    default: Option<bool>,
+}
+
 impl Credentials {
-    /// Create a new Credentials instance
-    fn new(app_id: Option<String>, api_key: Option<String>) -> Result<Self> {
-        let app_id = app_id.context("Missing credential: ALGOLIA_APPLICATION_ID")?;
-        let api_key = api_key.context("Missing credential: ALGOLIA_API_KEY")?;
+    /// Resolve credentials with fallback order (first ENV, then default profile)
+    pub fn load() -> Result<Self> {
+        let profiles = load_profiles()?;
+        let default = default_profile(&profiles).ok();
+
+        let app_id = std::env::var("ALGOLIA_APPLICATION_ID")
+            .ok()
+            .or_else(|| default.as_ref().map(|p| p.application_id.clone()))
+            .context("No application ID found")?;
+        let api_key = std::env::var("ALGOLIA_API_KEY")
+            .ok()
+            .or_else(|| default.as_ref().map(|p| p.api_key.clone()))
+            .context("No API key found")?;
 
         Ok(Self { app_id, api_key })
     }
-
-    /// Create a new Credentials instance from environment variables
-    pub fn from_env() -> Result<Self> {
-        Self::new(
-            std::env::var("ALGOLIA_APPLICATION_ID").ok(),
-            std::env::var("ALGOLIA_API_KEY").ok(),
-        )
-    }
 }
 
-#[test]
-fn new_credentials() {
-    let credentials =
-        Credentials::new(Some("test-app".to_string()), Some("test-key".to_string())).unwrap();
-    assert_eq!(credentials.app_id, "test-app");
-    assert_eq!(credentials.api_key, "test-key");
+/// Resolve the path to the config profile
+fn profile_path() -> Result<PathBuf> {
+    let dir = dirs::config_local_dir().context("Can't get config directory")?;
+
+    Ok(dir.join("algolia").join("config.toml"))
 }
 
-#[test]
-fn new_errors_without_application_id() {
-    let err = Credentials::new(None, Some("api_key".to_string())).unwrap_err();
-    assert!(err.to_string().contains("Missing credential"));
-    assert!(err.to_string().contains("ALGOLIA_APPLICATION_ID"));
+/// Load and parse profiles
+fn load_profiles() -> Result<HashMap<String, Profile>> {
+    let path = profile_path()?;
+    let content = std::fs::read_to_string(&path).context("Can't read profile file")?;
+    let profiles: HashMap<String, Profile> =
+        toml::from_str(&content).context("Can't parse config file")?;
+    Ok(profiles)
 }
 
-#[test]
-fn new_errors_without_api_key() {
-    let err = Credentials::new(Some("application_id".to_string()), None).unwrap_err();
-    assert!(err.to_string().contains("Missing credential"));
-    assert!(err.to_string().contains("ALGOLIA_API_KEY"));
+/// Get the default profile
+fn default_profile(profiles: &HashMap<String, Profile>) -> Result<&Profile> {
+    profiles
+        .values()
+        .find(|profile| profile.default.unwrap_or(false))
+        .context("No default profile found")
 }

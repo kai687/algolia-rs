@@ -13,6 +13,7 @@ fn format_large_numbers<T: ToFormattedString>(val: &T) -> String {
 }
 
 /// Format file sizes
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn format_sizes(val: &u64) -> String {
     ByteSize(*val).display().si().to_string()
 }
@@ -40,6 +41,7 @@ pub struct ListIndicesResponse {
 #[derive(Debug, Serialize, Deserialize, Tabled)]
 #[serde(rename_all = "camelCase")]
 #[tabled(rename_all = "UPPERCASE")]
+#[must_use]
 pub struct ListIndexItem {
     /// Index name
     pub name: String,
@@ -97,9 +99,9 @@ impl ListIndexItem {
                 if n > 1 {
                     word = "replicas";
                 }
-                format!("primary ({} {})", n, word)
+                format!("primary ({n} {word})")
             }
-            _ => "".to_string(),
+            _ => String::new(),
         };
 
         self
@@ -160,7 +162,7 @@ mod tests {
         mock.assert();
     }
 
-    /// Test helper for with_index_type tests
+    /// Test helper for `with_index_type` tests
     fn item() -> ListIndexItem {
         ListIndexItem {
             name: "test-index".to_string(),
@@ -182,7 +184,7 @@ mod tests {
     #[test]
     fn item_for_regular_index() {
         let item = item().with_index_type();
-        assert_eq!(item.index_type, "")
+        assert_eq!(item.index_type, "");
     }
 
     #[test]
@@ -193,7 +195,7 @@ mod tests {
         }
         .with_index_type();
 
-        assert_eq!(item.index_type, "primary (1 replica)")
+        assert_eq!(item.index_type, "primary (1 replica)");
     }
 
     #[test]
@@ -204,7 +206,7 @@ mod tests {
         }
         .with_index_type();
 
-        assert_eq!(item.index_type, "primary (2 replicas)")
+        assert_eq!(item.index_type, "primary (2 replicas)");
     }
 
     #[test]
@@ -215,7 +217,7 @@ mod tests {
         }
         .with_index_type();
 
-        assert_eq!(item.index_type, "replica of primary-index")
+        assert_eq!(item.index_type, "replica of primary-index");
     }
 
     #[test]
@@ -227,6 +229,6 @@ mod tests {
         }
         .with_index_type();
 
-        assert_eq!(item.index_type, "virtual replica of primary-index")
+        assert_eq!(item.index_type, "virtual replica of primary-index");
     }
 }

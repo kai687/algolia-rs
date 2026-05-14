@@ -17,7 +17,7 @@ pub enum OutputFormat {
     Json,
 }
 
-/// clap_complete::Shell + Nushell
+/// `clap_complete::Shell` + Nushell
 #[derive(Clone, clap::ValueEnum)]
 pub enum AnyShell {
     Bash,
@@ -47,13 +47,6 @@ enum Commands {
         subcommand: IndicesCommands,
     },
 
-    /// Work with profiles
-    #[command(visible_aliases = ["profile", "p"])]
-    Profiles {
-        #[command(subcommand)]
-        subcommand: ProfileCommands,
-    },
-
     /// Generate completion scripts
     Completions {
         /// The shell for which to generate completions
@@ -73,24 +66,13 @@ enum IndicesCommands {
     },
 }
 
-#[derive(clap::Subcommand)]
-enum ProfileCommands {
-    /// List profiles
-    #[command(visible_aliases = ["ls", "l"])]
-    List {
-        /// Output format
-        #[arg(short, long, value_enum)]
-        output: Option<OutputFormat>,
-    },
-}
-
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
             IndicesCommands::List { output } => {
-                let auth = auth::Credentials::from_env()?;
+                let auth = auth::Credentials::load()?;
                 let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
 
                 // Set output if not specified by command line option
@@ -101,21 +83,7 @@ pub async fn run() -> Result<()> {
                         OutputFormat::Json
                     }
                 });
-                cmd::list_indices(&client, &output_format, io::stdout()).await?
-            }
-        },
-
-        Commands::Profiles { subcommand } => match subcommand {
-            ProfileCommands::List { output } => {
-                // Set output if not specified by command line option
-                let output_format = output.unwrap_or_else(|| {
-                    if io::stdout().is_terminal() {
-                        OutputFormat::Pretty
-                    } else {
-                        OutputFormat::Json
-                    }
-                });
-                cmd::list_profiles(&output_format, io::stdout())?
+                cmd::list_indices(&client, &output_format, io::stdout()).await?;
             }
         },
 
@@ -130,7 +98,7 @@ pub async fn run() -> Result<()> {
                 AnyShell::Fish => generate(Shell::Fish, &mut cmd, name, &mut io::stdout()),
                 AnyShell::Elvish => generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout()),
                 AnyShell::PowerShell => {
-                    generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout())
+                    generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout());
                 }
                 AnyShell::Nushell => generate(Nushell, &mut cmd, name, &mut io::stdout()),
             }

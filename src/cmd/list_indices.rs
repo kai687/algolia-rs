@@ -27,13 +27,13 @@ pub async fn list_indices<W: std::io::Write>(
             let json = serde_json::to_string_pretty(&response)
                 .context("Failed to convert response back to JSON.")?;
 
-            writeln!(writer, "{}", json)?;
+            writeln!(writer, "{json}")?;
         }
         OutputFormat::Pretty => {
             let indices: Vec<ListIndexItem> = response
                 .items
                 .into_iter()
-                .map(|i| i.with_index_type())
+                .map(ListIndexItem::with_index_type)
                 .collect();
 
             let style = Style::modern_rounded()
@@ -49,7 +49,7 @@ pub async fn list_indices<W: std::io::Write>(
             table.modify(Columns::one(1), Alignment::right());
             // Size column
             table.modify(Columns::one(2), Alignment::right());
-            writeln!(writer, "{}", table)?;
+            writeln!(writer, "{table}")?;
         }
     }
 
