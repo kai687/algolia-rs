@@ -61,8 +61,31 @@ enum IndicesCommands {
     #[command(visible_aliases = ["ls", "l"])]
     List {
         /// Output format
-        #[arg(short, long, value_enum)]
+        #[arg(short, long)]
         output: Option<OutputFormat>,
+    },
+
+    /// Copy indices
+    #[command(visible_aliases = ["cp"])]
+    Copy {
+        /// Index to copy
+        index_name: String,
+        /// Destination index
+        #[arg(short, long)]
+        destination: String,
+        /// What to copy
+        #[arg(short, long, num_args = 0.., value_delimiter = ',')]
+        scope: Vec<search::operation_index::OperationScope>,
+    },
+
+    /// Move (rename) indices
+    #[command(visible_aliases = ["mv"])]
+    Move {
+        /// Index to move or rename
+        index_name: String,
+        /// Destination index
+        #[arg(short, long)]
+        destination: String,
     },
 }
 
@@ -84,6 +107,24 @@ pub async fn run() -> Result<()> {
                     }
                 });
                 cmd::list_indices(&client, &output_format, io::stdout()).await?;
+            }
+
+            IndicesCommands::Copy {
+                index_name,
+                destination,
+                scope,
+            } => {
+                let auth = auth::Credentials::load()?;
+                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+
+                cmd::copy_index(&client, index_name, &destination, Some(scope), io::stdout()).await?;
+            }
+
+            IndicesCommands::Move { index_name, destination } => {
+                let auth = auth::Credentials::load()?;
+                let client = search::SearchClient::new(&auth.app_id, &auth.api_key)?;
+
+                cmd::move_index(&client, index_name, &destination, io::stdout()).await?;
             }
         },
 

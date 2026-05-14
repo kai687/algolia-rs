@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 /// Allowed scopes for the `copy` operation
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "camelCase")]
 pub enum OperationScope {
     Settings,
