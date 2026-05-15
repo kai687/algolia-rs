@@ -62,7 +62,7 @@ enum Commands {
         shell: AnyShell,
 
         #[arg(long, global = false, hide = true)]
-        output: bool,
+        output: Option<OutputFormat>,
     },
 }
 
