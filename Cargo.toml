@@ -26,3 +26,7 @@ httpmock = "0.8.3"
 
 [lints.clippy]
 pedantic = "warn"
+
+[profile.release]
+strip = true
+lto = true

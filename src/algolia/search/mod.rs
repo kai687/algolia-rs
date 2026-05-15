@@ -3,10 +3,11 @@ use std::fmt;
 use anyhow::{Context, Result};
 use chrono::DateTime;
 use colored::Colorize;
-use reqwest::{Client, header};
+use reqwest::{Client, StatusCode, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub mod delete_index;
+pub mod index_exists;
 pub mod list_indices;
 pub mod operation_index;
 pub mod wait_for_indexing_task;
@@ -64,8 +65,20 @@ impl SearchClient {
         self.send(self.http.get(request_url)).await
     }
 
+    /// Wrapper for GET requests (returns boolean if successful)
+    async fn exists(&self, path: &str) -> Result<bool> {
+        let request_url = format!("{}{}", self.base_url, path);
+        let response = self.http.get(&request_url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => Err(anyhow::anyhow!("Unexpected status: {status}")),
+        }
+    }
+
     /// Wrapper for POST requests (Returns JSON response)
-    pub async fn post<T: DeserializeOwned, D: Serialize>(
+    async fn post<T: DeserializeOwned, D: Serialize>(
         &self,
         path: &str,
         data: Option<&D>,
@@ -75,7 +88,7 @@ impl SearchClient {
     }
 
     /// Wrapper for DELETE requests (Returns JSON response)
-    pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+    async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
         self.send(self.http.delete(request_url)).await
     }
@@ -256,5 +269,73 @@ mod tests {
             .unwrap();
 
         mock.assert();
+    }
+
+    #[tokio::test]
+    async fn exists_check_true() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
+            then.status(200);
+        });
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        let response = client.exists("/testing").await.unwrap();
+        mock.assert();
+        assert!(response);
+    }
+
+    #[tokio::test]
+    async fn exists_check_false() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
+            then.status(404);
+        });
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        let response = client.exists("/testing").await.unwrap();
+        mock.assert();
+        assert!(!response);
+    }
+
+    #[tokio::test]
+    async fn exists_check_unknown_status() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/1/testing")
+                .header("x-algolia-application-id", "test-app")
+                .header("x-algolia-api-key", "test-key");
+            then.status(500);
+        });
+        let client = SearchClient::new_with_base_url(
+            "test-app",
+            "test-key",
+            format!("{}/1", server.base_url()),
+        )
+        .unwrap();
+
+        let result = client.exists("/testing").await;
+        mock.assert();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Unexpected"));
     }
 }

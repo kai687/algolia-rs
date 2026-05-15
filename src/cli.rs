@@ -71,6 +71,7 @@ enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
     List {
+        /// We don't need wait here.
         #[arg(long, global = false, hide = true)]
         wait: bool,
     },
