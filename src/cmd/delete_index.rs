@@ -1,4 +1,7 @@
-use crate::{algolia::search::SearchClient, cli::OutputFormat};
+use crate::{
+    algolia::search::SearchClient,
+    cli::{GlobalOpts, OutputFormat, confirm_operation},
+};
 use anyhow::{Context, Result};
 use colored::Colorize;
 
@@ -6,16 +9,20 @@ use colored::Colorize;
 pub async fn delete_index<W: std::io::Write>(
     client: &SearchClient,
     index_name: String,
-    output: &OutputFormat,
-    wait: bool,
+    global_opts: &GlobalOpts,
     mut writer: W,
 ) -> Result<()> {
+    if !global_opts.confirm && !confirm_operation("Do you really want to delete this index?") {
+        println!("Cancelled");
+        return Ok(());
+    }
+
     let response = client
         .delete_index(&index_name)
         .await
         .context("Can't delete index")?;
 
-    match output {
+    match global_opts.output_format() {
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&response)
                 .context("Can't convert response to JSON")?;
@@ -27,7 +34,7 @@ pub async fn delete_index<W: std::io::Write>(
         }
     }
 
-    if wait {
+    if global_opts.wait {
         client.wait_for_task(&index_name, response.task_id).await?;
         writeln!(
             writer,

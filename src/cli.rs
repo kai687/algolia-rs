@@ -1,7 +1,8 @@
 use anyhow::Result;
-use clap::{CommandFactory, Parser};
+use clap::{Args, CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
+use dialoguer::Confirm;
 use std::io;
 use std::io::IsTerminal;
 
@@ -17,6 +18,46 @@ pub enum OutputFormat {
     Json,
 }
 
+/// Options that are valid in many commands
+#[derive(Args)]
+pub struct GlobalOpts {
+    /// Output format
+    #[arg(short, long, global = true)]
+    pub output: Option<OutputFormat>,
+
+    /// Wait until operations are complete
+    #[arg(short, long, global = true)]
+    pub wait: bool,
+
+    /// Always confirm the operation
+    #[arg(short = 'y', long = "yes", global = true)]
+    pub confirm: bool,
+}
+
+impl GlobalOpts {
+    // Set output if not specified by command line option
+    #[must_use]
+    pub fn output_format(&self) -> OutputFormat {
+        self.output.clone().unwrap_or_else(|| {
+            if io::stdout().is_terminal() {
+                OutputFormat::Pretty
+            } else {
+                OutputFormat::Json
+            }
+        })
+    }
+}
+
+/// Confirm a potentially destructive operation
+#[must_use]
+pub fn confirm_operation(msg: &str) -> bool {
+    Confirm::new()
+        .with_prompt(msg)
+        .default(false)
+        .interact()
+        .unwrap_or(false)
+}
+
 /// CLI for working with Algolia's APIs
 #[derive(clap::Parser)]
 #[command(name = "Algolia", version, args_conflicts_with_subcommands = true)]
@@ -24,13 +65,8 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// Output format
-    #[arg(short, long, global = true)]
-    output: Option<OutputFormat>,
-
-    /// Wait for operations
-    #[arg(short, long, global = true)]
-    wait: bool,
+    #[command(flatten)]
+    global: GlobalOpts,
 }
 
 /// `clap_complete::Shell` + Nushell
@@ -60,9 +96,6 @@ enum Commands {
         /// The shell for which to generate completions
         #[arg(value_enum)]
         shell: AnyShell,
-
-        #[arg(long, global = false, hide = true)]
-        output: Option<OutputFormat>,
     },
 }
 
@@ -70,11 +103,7 @@ enum Commands {
 enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
-    List {
-        /// We don't need wait here.
-        #[arg(long, global = false, hide = true)]
-        wait: bool,
-    },
+    List,
 
     /// Copy an index
     #[command(visible_aliases = ["cp"])]
@@ -116,20 +145,11 @@ fn require_client() -> Result<search::SearchClient> {
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    // Set output if not specified by command line option
-    let output_format = cli.output.unwrap_or_else(|| {
-        if io::stdout().is_terminal() {
-            OutputFormat::Pretty
-        } else {
-            OutputFormat::Json
-        }
-    });
-
     match cli.command {
         Commands::Indices { subcommand } => match subcommand {
-            IndicesCommands::List { wait: _ } => {
+            IndicesCommands::List => {
                 let client = require_client()?;
-                cmd::list_indices(&client, &output_format, io::stdout()).await?;
+                cmd::list_indices(&client, &cli.global, io::stdout()).await?;
             }
 
             IndicesCommands::Copy {
@@ -144,8 +164,7 @@ pub async fn run() -> Result<()> {
                     index_name,
                     &destination,
                     Some(scope),
-                    &output_format,
-                    cli.wait,
+                    &cli.global,
                     io::stdout(),
                 )
                 .await?;
@@ -157,26 +176,18 @@ pub async fn run() -> Result<()> {
             } => {
                 let client = require_client()?;
 
-                cmd::move_index(
-                    &client,
-                    index_name,
-                    &destination,
-                    &output_format,
-                    cli.wait,
-                    io::stdout(),
-                )
-                .await?;
+                cmd::move_index(&client, index_name, &destination, &cli.global, io::stdout())
+                    .await?;
             }
 
             IndicesCommands::Delete { index_name } => {
                 let client = require_client()?;
 
-                cmd::delete_index(&client, index_name, &output_format, cli.wait, io::stdout())
-                    .await?;
+                cmd::delete_index(&client, index_name, &cli.global, io::stdout()).await?;
             }
         },
 
-        Commands::Completions { shell, output: _ } => {
+        Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             let name = env!("CARGO_PKG_NAME");
 

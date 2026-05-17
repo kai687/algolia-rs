@@ -1,6 +1,6 @@
 use crate::{
     algolia::search::{SearchClient, operation_index::MoveOperation},
-    cli::OutputFormat,
+    cli::{GlobalOpts, OutputFormat, confirm_operation},
 };
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -10,10 +10,17 @@ pub async fn move_index<W: std::io::Write>(
     client: &SearchClient,
     index_name: String,
     destination: &str,
-    output: &OutputFormat,
-    wait: bool,
+    global_opts: &GlobalOpts,
     mut writer: W,
 ) -> Result<()> {
+    if !global_opts.confirm
+        && client.index_exists(destination).await?
+        && !confirm_operation("Destination index exists. Overwrite it?")
+    {
+        println!("Cancelled");
+        return Ok(());
+    }
+
     let data = MoveOperation {
         destination: destination.to_string(),
     };
@@ -23,7 +30,7 @@ pub async fn move_index<W: std::io::Write>(
         .await
         .context("Can't move index")?;
 
-    match output {
+    match global_opts.output_format() {
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&response)
                 .context("Can't convert response to JSON")?;
@@ -34,7 +41,7 @@ pub async fn move_index<W: std::io::Write>(
         }
     }
 
-    if wait {
+    if global_opts.wait {
         client.wait_for_task(destination, response.task_id).await?;
         writeln!(
             writer,
