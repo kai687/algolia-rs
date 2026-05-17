@@ -5,11 +5,13 @@ use chrono::DateTime;
 use colored::Colorize;
 use reqwest::{Client, StatusCode, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Map, Value};
 
 pub mod delete_index;
 pub mod index_exists;
 pub mod list_indices;
 pub mod operation_index;
+pub mod push_records;
 pub mod wait_for_indexing_task;
 
 /// Client for requests to the Algolia Search API
@@ -101,6 +103,31 @@ pub struct UpdatedAtResponse {
     #[serde(rename = "taskID")]
     pub task_id: u64,
     pub updated_at: String,
+}
+
+/// Algolia record (without object ID)
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Record(Map<String, Value>);
+
+/// Algolia record with object ID
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RecordWithObjectID {
+    /// A unique identifier for the record
+    #[serde(rename = "objectID")]
+    pub object_id: String,
+
+    /// Record attributes
+    #[serde(flatten)]
+    pub fields: Map<String, Value>,
+}
+
+/// Try to 'upcast' a simple record to one with `objectID`
+impl TryFrom<Record> for RecordWithObjectID {
+    type Error = anyhow::Error;
+
+    fn try_from(record: Record) -> Result<Self> {
+        serde_json::from_value(Value::Object(record.0)).map_err(Into::into)
+    }
 }
 
 impl fmt::Display for UpdatedAtResponse {

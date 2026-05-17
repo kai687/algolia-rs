@@ -1,10 +1,10 @@
 use anyhow::Result;
-use clap::{Args, CommandFactory, Parser};
+use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
 use dialoguer::Confirm;
-use std::io;
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal};
+use std::path::PathBuf;
 
 use crate::algolia::search;
 use crate::auth;
@@ -19,7 +19,7 @@ pub enum OutputFormat {
 }
 
 /// Options that are valid in many commands
-#[derive(Args)]
+#[derive(clap::Args)]
 pub struct GlobalOpts {
     /// Output format
     #[arg(short, long, global = true)]
@@ -91,6 +91,13 @@ enum Commands {
         subcommand: IndicesCommands,
     },
 
+    /// Work with records
+    #[command(visible_aliases = ["objects", "r"])]
+    Records {
+        #[command(subcommand)]
+        subcommand: RecordsCommands,
+    },
+
     /// Generate completion scripts
     Completions {
         /// The shell for which to generate completions
@@ -133,6 +140,24 @@ enum IndicesCommands {
     Delete {
         /// Index to delete
         index_name: String,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum RecordsCommands {
+    /// Import records from a file (or standard input)
+    #[command(visible_aliases = ["upsert", "p"])]
+    Import {
+        /// Where to push records
+        index_name: String,
+
+        /// Input file (`-` for standard input)
+        #[arg(short, long, value_name = "FILE")]
+        file: Option<PathBuf>,
+
+        /// Whether to auto-generate `objectID`
+        #[arg(long)]
+        auto_id: bool,
     },
 }
 
@@ -203,6 +228,18 @@ pub async fn run() -> Result<()> {
                 AnyShell::Nushell => generate(Nushell, &mut cmd, name, &mut io::stdout()),
             }
         }
+
+        Commands::Records { subcommand } => match subcommand {
+            RecordsCommands::Import {
+                index_name,
+                file,
+                auto_id,
+            } => {
+                let client = require_client()?;
+
+                cmd::import_records(&client, index_name, file, auto_id, io::stdout()).await?;
+            }
+        },
     }
 
     Ok(())

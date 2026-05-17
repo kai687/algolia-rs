@@ -9,3 +9,6 @@ pub use move_index::move_index;
 
 pub mod delete_index;
 pub use delete_index::delete_index;
+
+pub mod import_records;
+pub use import_records::import_records;
