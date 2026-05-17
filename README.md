@@ -13,3 +13,4 @@ that's properly supported.
 - [X] `algolia indices copy`
 - [X] `algolia indices move`
 - [X] `algolia indices delete`
+- [X] `algolia records import`

@@ -154,10 +154,6 @@ enum RecordsCommands {
         /// Input file (`-` for standard input)
         #[arg(short, long, value_name = "FILE")]
         file: Option<PathBuf>,
-
-        /// Whether to auto-generate `objectID`
-        #[arg(long)]
-        auto_id: bool,
     },
 }
 
@@ -230,14 +226,10 @@ pub async fn run() -> Result<()> {
         }
 
         Commands::Records { subcommand } => match subcommand {
-            RecordsCommands::Import {
-                index_name,
-                file,
-                auto_id,
-            } => {
+            RecordsCommands::Import { index_name, file } => {
                 let client = require_client()?;
 
-                cmd::import_records(&client, index_name, file, auto_id, io::stdout()).await?;
+                cmd::import_records(&client, index_name, file, io::stdout()).await?;
             }
         },
     }
