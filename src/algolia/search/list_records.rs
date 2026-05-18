@@ -1,11 +1,19 @@
 use super::{RecordWithObjectID, SearchClient};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 
 /// We only care about the `hits` field
 #[derive(Deserialize)]
 struct BrowseResponse {
     hits: Vec<RecordWithObjectID>,
+    cursor: Option<String>,
+}
+
+/// Browse response that keeps each hit as raw JSON.
+#[derive(Deserialize)]
+struct RawBrowseResponse {
+    hits: Vec<Box<RawValue>>,
     cursor: Option<String>,
 }
 
@@ -39,6 +47,31 @@ impl SearchClient {
         // Call the endpoint repeatedly until the response doesn't include a `cursor` field.
         loop {
             let response = self.browse(index_name, cursor).await?;
+            on_page(response.hits)?;
+
+            cursor = response.cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Browse raw record JSON page-by-page, avoiding per-record deserialize/re-serialize.
+    pub async fn for_each_raw_record_page<F>(&self, index_name: &str, mut on_page: F) -> Result<()>
+    where
+        F: FnMut(Vec<Box<RawValue>>) -> Result<()>,
+    {
+        let request_url = format!("/indexes/{index_name}/browse");
+        let mut cursor = None;
+
+        // Call the endpoint repeatedly until the response doesn't include a `cursor` field.
+        loop {
+            let data = BrowseRequest { cursor };
+            let response = self
+                .post::<RawBrowseResponse, BrowseRequest>(&request_url, Some(&data))
+                .await?;
             on_page(response.hits)?;
 
             cursor = response.cursor;
