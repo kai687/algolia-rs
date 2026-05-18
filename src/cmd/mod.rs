@@ -1,4 +1,8 @@
+use anyhow::Result;
+use std::{fs, io, path};
+
 pub mod list_indices;
+
 pub use list_indices::list_indices;
 
 pub mod copy_index;
@@ -15,3 +19,13 @@ pub use import_records::import_records;
 
 pub mod list_records;
 pub use list_records::list_records;
+
+pub mod replace_records;
+pub use replace_records::replace_records;
+
+fn file_or_stdin(path: Option<&path::PathBuf>) -> Result<Box<dyn io::Read>> {
+    match path.and_then(|p| p.to_str()) {
+        None | Some("-") => Ok(Box::new(io::stdin())),
+        Some(p) => Ok(Box::new(fs::File::open(p)?)),
+    }
+}

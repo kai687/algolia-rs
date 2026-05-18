@@ -156,6 +156,16 @@ enum RecordsCommands {
         file: Option<PathBuf>,
     },
 
+    /// Replace all records in an index with new ones from a file
+    Replace {
+        /// Where to replace records
+        index_name: String,
+
+        /// Input file (`-` for standard input)
+        #[arg(short, long, value_name = "FILE")]
+        file: Option<PathBuf>,
+    },
+
     /// List all records
     #[command(visible_aliases = ["ls", "l", "browse"])]
     List {
@@ -237,13 +247,19 @@ pub async fn run() -> Result<()> {
                 let client = require_client()?;
 
                 cmd::import_records(&client, index_name, file, io::stdout()).await?;
-            }
+            },
 
             RecordsCommands::List { index_name } => {
                 let client = require_client()?;
                 let stdout = io::stdout();
 
                 cmd::list_records(&client, index_name, &cli.global, stdout.lock()).await?;
+            },
+
+            RecordsCommands::Replace { index_name, file } => {
+                let client = require_client()?;
+
+                cmd::replace_records(&client, index_name, file, io::stdout()).await?;
             }
         },
     }
