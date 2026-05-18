@@ -82,8 +82,12 @@ fn load_profiles() -> Result<HashMap<String, Profile>> {
                 .join(", ")
         ))?;
 
-    let content = std::fs::read_to_string(&path).context(format!("Can't read profile file: {}", path.to_string_lossy()))?;
-    let profiles: HashMap<String, Profile> = toml::from_str(&content).context("Can't parse config file.")?;
+    let content = std::fs::read_to_string(&path).context(format!(
+        "Can't read profile file: {}",
+        path.to_string_lossy()
+    ))?;
+    let profiles: HashMap<String, Profile> =
+        toml::from_str(&content).context("Can't parse config file.")?;
 
     Ok(profiles)
 }

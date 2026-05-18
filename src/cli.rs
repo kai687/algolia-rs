@@ -161,7 +161,7 @@ enum RecordsCommands {
     List {
         /// Index name
         index_name: String,
-    }
+    },
 }
 
 /// Helper function to initialize a Search API client
