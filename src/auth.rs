@@ -38,19 +38,53 @@ impl Credentials {
     }
 }
 
-/// Resolve the path to the config profile
-fn profile_path() -> Result<PathBuf> {
-    let dir = dirs::config_local_dir().context("Can't get config directory")?;
+/// Candidate profile paths
+fn profile_paths() -> Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
 
-    Ok(dir.join("algolia").join("config.toml"))
+    // Prefer `XDG_CONFIG_HOME` even on macOS
+    let xdg_config_dir = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")));
+
+    if let Some(dir) = xdg_config_dir {
+        paths.push(dir.join("algolia").join("config.toml"));
+    }
+
+    // Also support platform-native paths
+    let native = dirs::config_local_dir()
+        .context("Can't get configuration directory")?
+        .join("algolia")
+        .join("config.toml");
+
+    if !paths.contains(&native) {
+        paths.push(native);
+    }
+
+    Ok(paths)
 }
 
 /// Load and parse profiles
 fn load_profiles() -> Result<HashMap<String, Profile>> {
-    let path = profile_path()?;
-    let content = std::fs::read_to_string(&path).context("Can't read profile file")?;
-    let profiles: HashMap<String, Profile> =
-        toml::from_str(&content).context("Can't parse config file")?;
+    let paths = profile_paths()?;
+
+    let path = paths
+        .iter()
+        .find(|path| path.exists())
+        .cloned()
+        .context(format!(
+            "Can't find profile file in any config directory: {}",
+            paths
+                .iter()
+                .map(|p| p.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))?;
+
+    let content = std::fs::read_to_string(&path).context(format!("Can't read profile file: {}", path.to_string_lossy()))?;
+    let profiles: HashMap<String, Profile> = toml::from_str(&content).context("Can't parse config file.")?;
+
     Ok(profiles)
 }
 

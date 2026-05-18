@@ -17,7 +17,9 @@ impl SearchClient {
         _cursor: Option<String>,
     ) -> Result<BrowseResponse> {
         let request_url = format!("/indexes/{index_name}/browse");
-        self.post::<BrowseResponse, serde_json::Value>(&request_url, None)
+        // browse request needs empty `{}` body, not `null`
+        let data = serde_json::json!({});
+        self.post::<BrowseResponse, serde_json::Value>(&request_url, Some(&data))
             .await
     }
 
