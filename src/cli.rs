@@ -242,7 +242,7 @@ pub async fn run() -> Result<()> {
             RecordsCommands::List { index_name } => {
                 let client = require_client()?;
 
-                cmd::list_records(&client, index_name).await?;
+                cmd::list_records(&client, index_name, io::stdout()).await?;
             }
         },
     }
