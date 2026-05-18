@@ -47,10 +47,18 @@ pub async fn replace_records<W: std::io::Write>(
         destination: index_name.clone(),
     };
 
-    let move_response = client.move_index(&tmp_index, &move_op).await?;
-    client
-        .wait_for_task(&index_name, move_response.task_id)
-        .await?;
+    let move_response_result = client.move_index(&tmp_index, &move_op).await;
+
+    match move_response_result {
+        Ok(response) => client.wait_for_task(&index_name, response.task_id).await?,
+        Err(err) => {
+            // Clean up temporary index (don't need to wait)
+            let _ = client.delete_index(&tmp_index).await?;
+            return Err(err);
+        }
+    }
+
+    writeln!(writer, "Replaced records in {index_name}")?;
 
     Ok(())
 }

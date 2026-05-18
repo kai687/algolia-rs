@@ -3,17 +3,30 @@ use std::fmt;
 use anyhow::{Context, Result};
 use chrono::DateTime;
 use colored::Colorize;
-use reqwest::{Client, StatusCode, header};
+use reqwest::{Client, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 
 pub mod delete_index;
-pub mod index_exists;
+// pub mod index_exists;
 pub mod list_indices;
 pub mod list_records;
 pub mod operation_index;
 pub mod push_records;
 pub mod wait_for_indexing_task;
+
+/// Represent an API error
+#[derive(Debug, Deserialize, thiserror::Error)]
+pub struct AlgoliaApiError {
+    pub message: String,
+    pub status: u16,
+}
+
+impl fmt::Display for AlgoliaApiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "API error {}: {}", self.status, self.message)
+    }
+}
 
 /// Client for requests to the Algolia Search API
 pub struct SearchClient {
@@ -51,33 +64,30 @@ impl SearchClient {
     async fn send<T: DeserializeOwned>(&self, request: reqwest::RequestBuilder) -> Result<T> {
         let response = request.send().await.context("Can't make HTTP request")?;
         let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("HTTP {status}: {body}");
+
+        if status.is_success() {
+            return response
+                .json::<T>()
+                .await
+                .context("Can't deserialize response");
         }
 
-        response
-            .json::<T>()
-            .await
-            .context("Can't deserialize response")
+        let body = response.text().await.unwrap_or_default();
+
+        match serde_json::from_str::<AlgoliaApiError>(&body) {
+            Ok(err) => Err(AlgoliaApiError {
+                status: status.as_u16(),
+                message: err.message,
+            }
+            .into()),
+            Err(_) => Err(anyhow::anyhow!("HTTP {status}: {body}")),
+        }
     }
 
     /// Wrapper for GET requests (returns JSON response)
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
         self.send(self.http.get(request_url)).await
-    }
-
-    /// Wrapper for GET requests (returns boolean if successful)
-    async fn exists(&self, path: &str) -> Result<bool> {
-        let request_url = format!("{}{}", self.base_url, path);
-        let response = self.http.get(&request_url).send().await?;
-
-        match response.status() {
-            StatusCode::OK => Ok(true),
-            StatusCode::NOT_FOUND => Ok(false),
-            status => Err(anyhow::anyhow!("Unexpected status: {status}")),
-        }
     }
 
     /// Wrapper for POST requests (Returns JSON response)
@@ -95,15 +105,6 @@ impl SearchClient {
         let request_url = format!("{}{}", self.base_url, path);
         self.send(self.http.delete(request_url)).await
     }
-}
-
-/// Shared response with Task ID
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdatedAtResponse {
-    #[serde(rename = "taskID")]
-    pub task_id: u64,
-    pub updated_at: String,
 }
 
 /// Algolia record (without object ID)
@@ -131,6 +132,15 @@ impl TryFrom<Record> for RecordWithObjectID {
     }
 }
 
+/// Shared response with Task ID
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatedAtResponse {
+    #[serde(rename = "taskID")]
+    pub task_id: u64,
+    pub updated_at: String,
+}
+
 impl fmt::Display for UpdatedAtResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let dt = DateTime::parse_from_rfc3339(&self.updated_at).map_err(|_| fmt::Error)?;
@@ -146,59 +156,68 @@ impl fmt::Display for UpdatedAtResponse {
 
 #[cfg(test)]
 mod tests {
+    use test_support::AlgoliaMock;
+
     use super::*;
     use httpmock::Method::{DELETE, GET, POST};
-    use httpmock::MockServer;
     use serde_json::json;
 
     #[tokio::test]
-    async fn get_sends_request() {
-        let server = MockServer::start();
+    async fn get_request_succeeds() {
+        let api = AlgoliaMock::new();
+        let mock = api.mock_response(GET, "/1/testing", 200, json!({}));
 
-        let mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(200)
-                .header("content-type", "application/json")
-                .json_body(json!({"items": []}));
-        });
-
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
-
-        client.get::<serde_json::Value>("/testing").await.unwrap();
+        api.client
+            .get::<serde_json::Value>("/testing")
+            .await
+            .unwrap();
 
         mock.assert();
     }
 
     #[tokio::test]
-    async fn get_fails_with_good_error() {
-        let server = MockServer::start();
+    async fn get_request_fails_with_algolia_api_error() {
+        let api = AlgoliaMock::new();
+        let mock = api.mock_response(
+            GET,
+            "/1/testing",
+            404,
+            json!({"message": "Index not found", "status": 404}),
+        );
 
-        server.mock(|when, then| {
-            when.method(GET).path("/1/testing");
-            then.status(404)
-                .header("content-type", "application/json")
-                .json_body(json!({"message": "Index not found"}));
-        });
+        let error = api
+            .client
+            .get::<serde_json::Value>("/testing")
+            .await
+            .unwrap_err();
 
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+        let api_err = error
+            .downcast_ref::<AlgoliaApiError>()
+            .expect("expected AlgoliaApiError");
 
-        let result = client.get::<serde_json::Value>("/testing").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Index not found"));
+        assert!(matches!(api_err, AlgoliaApiError { status: 404, .. }));
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn get_request_fails_with_different_error() {
+        let api = AlgoliaMock::new();
+        let mock = api.mock_response(
+            GET,
+            "/1/testing",
+            503,
+            json!({ "text": "Unstructured error" }),
+        );
+
+        let error = api
+            .client
+            .get::<serde_json::Value>("/testing")
+            .await
+            .unwrap_err();
+        let api_err = error.downcast_ref::<AlgoliaApiError>();
+
+        assert!(api_err.is_none());
+        mock.assert();
     }
 
     #[derive(Serialize)]
@@ -209,31 +228,14 @@ mod tests {
 
     #[tokio::test]
     async fn post_sends_request_with_data() {
-        let server = MockServer::start();
-
-        let mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(201)
-                .header("content-type", "application/json")
-                .json_body(json!({"message": "created"}));
-        });
-
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
-
+        let api = AlgoliaMock::new();
+        let mock = api.mock_response(POST, "/1/testing", 201, json!({}));
         let data = TestData {
             foo: "foo".to_string(),
             bar: "bar".to_string(),
         };
 
-        client
+        api.client
             .post::<serde_json::Value, TestData>("/testing", Some(&data))
             .await
             .unwrap();
@@ -243,26 +245,10 @@ mod tests {
 
     #[tokio::test]
     async fn post_sends_request_without_data() {
-        let server = MockServer::start();
+        let api = AlgoliaMock::new();
+        let mock = api.mock_response(POST, "/1/testing", 201, json!({}));
 
-        let mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(201)
-                .header("content-type", "application/json")
-                .json_body(json!({"message": "created"}));
-        });
-
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
-
-        client
+        api.client
             .post::<serde_json::Value, serde_json::Value>("/testing", None)
             .await
             .unwrap();
@@ -271,99 +257,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_sends_request() {
-        let server = MockServer::start();
+    async fn delete_request_succeeds() {
+        let api = AlgoliaMock::new();
+        let mock = api.mock_response(DELETE, "/1/testing", 200, json!({}));
 
-        let mock = server.mock(|when, then| {
-            when.method(DELETE)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(200)
-                .header("content-type", "application/json")
-                .json_body(json!({"status": "deleted"}));
-        });
-
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
-
-        client
+        api.client
             .delete::<serde_json::Value>("/testing")
             .await
             .unwrap();
-
         mock.assert();
     }
+}
 
-    #[tokio::test]
-    async fn exists_check_true() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(200);
-        });
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::SearchClient;
+    use httpmock::{Method, Mock, MockServer};
 
-        let response = client.exists("/testing").await.unwrap();
-        mock.assert();
-        assert!(response);
+    pub(crate) struct AlgoliaMock {
+        pub server: MockServer,
+        pub client: SearchClient,
     }
 
-    #[tokio::test]
-    async fn exists_check_false() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(404);
-        });
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+    impl AlgoliaMock {
+        pub(crate) fn new() -> Self {
+            let server = MockServer::start();
+            let client = SearchClient::new_with_base_url(
+                "test-app",
+                "test-key",
+                format!("{}/1", server.base_url()),
+            )
+            .unwrap();
 
-        let response = client.exists("/testing").await.unwrap();
-        mock.assert();
-        assert!(!response);
-    }
+            Self { server, client }
+        }
 
-    #[tokio::test]
-    async fn exists_check_unknown_status() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/1/testing")
-                .header("x-algolia-application-id", "test-app")
-                .header("x-algolia-api-key", "test-key");
-            then.status(500);
-        });
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+        pub(crate) fn mock_response(
+            &self,
+            method: Method,
+            path: &str,
+            status: u16,
+            body: serde_json::Value,
+        ) -> Mock<'_> {
+            self.server.mock(|when, then| {
+                when.method(method)
+                    .path(path)
+                    .header("x-algolia-application-id", "test-app")
+                    .header("x-algolia-api-key", "test-key");
 
-        let result = client.exists("/testing").await;
-        mock.assert();
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Unexpected"));
+                then.status(status)
+                    .header("content-type", "application/json")
+                    .json_body(body);
+            })
+        }
     }
 }

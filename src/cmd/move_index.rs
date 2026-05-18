@@ -14,7 +14,7 @@ pub async fn move_index<W: std::io::Write>(
     mut writer: W,
 ) -> Result<()> {
     if !global_opts.confirm
-        && client.index_exists(destination).await?
+        // && client.index_exists(destination).await?
         && !confirm_operation("Destination index exists. Overwrite it?")
     {
         println!("Cancelled");

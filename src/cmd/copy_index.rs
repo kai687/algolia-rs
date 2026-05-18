@@ -20,7 +20,7 @@ pub async fn copy_index<W: std::io::Write>(
     // Protect against accidentally overwriting destination index
     // unless pre-confirmed
     if !global_opts.confirm
-        && client.index_exists(destination).await?
+        // && client.index_exists(destination).await?
         && !confirm_operation("Destination index exist. Overwrite it?")
     {
         println!("Cancelled.");

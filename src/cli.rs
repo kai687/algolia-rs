@@ -247,14 +247,14 @@ pub async fn run() -> Result<()> {
                 let client = require_client()?;
 
                 cmd::import_records(&client, index_name, file, io::stdout()).await?;
-            },
+            }
 
             RecordsCommands::List { index_name } => {
                 let client = require_client()?;
                 let stdout = io::stdout();
 
-                cmd::list_records(&client, index_name, &cli.global, stdout.lock()).await?;
-            },
+                cmd::list_records(&client, index_name, stdout.lock()).await?;
+            }
 
             RecordsCommands::Replace { index_name, file } => {
                 let client = require_client()?;

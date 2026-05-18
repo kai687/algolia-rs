@@ -1,18 +1,11 @@
-use super::{RecordWithObjectID, SearchClient};
+use super::SearchClient;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-/// We only care about the `hits` field
-#[derive(Deserialize)]
-struct BrowseResponse {
-    hits: Vec<RecordWithObjectID>,
-    cursor: Option<String>,
-}
-
 /// Browse response that keeps each hit as raw JSON.
 #[derive(Deserialize)]
-struct RawBrowseResponse {
+struct BrowseResponse {
     hits: Vec<Box<RawValue>>,
     cursor: Option<String>,
 }
@@ -24,42 +17,9 @@ struct BrowseRequest {
 }
 
 impl SearchClient {
-    /// Browse for objects endpoint
-    async fn browse(
-        self: &SearchClient,
-        index_name: &str,
-        cursor: Option<String>,
-    ) -> Result<BrowseResponse> {
-        let request_url = format!("/indexes/{index_name}/browse");
-        // browse request needs empty `{}` body, not `null`
-        let data = BrowseRequest { cursor };
-        self.post::<BrowseResponse, BrowseRequest>(&request_url, Some(&data))
-            .await
-    }
-
-    /// Browse records page-by-page, calling `on_page` as soon as each page arrives.
-    pub async fn for_each_record_page<F>(&self, index_name: &str, mut on_page: F) -> Result<()>
-    where
-        F: FnMut(Vec<RecordWithObjectID>) -> Result<()>,
-    {
-        let mut cursor = None;
-
-        // Call the endpoint repeatedly until the response doesn't include a `cursor` field.
-        loop {
-            let response = self.browse(index_name, cursor).await?;
-            on_page(response.hits)?;
-
-            cursor = response.cursor;
-            if cursor.is_none() {
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Browse raw record JSON page-by-page, avoiding per-record deserialize/re-serialize.
-    pub async fn for_each_raw_record_page<F>(&self, index_name: &str, mut on_page: F) -> Result<()>
+    /// Iterate over paginated browse response, streaming results as they come in,
+    /// skipping deserialization as we only print out raw JSON records in the end
+    pub async fn list_records<F>(&self, index_name: &str, mut on_page: F) -> Result<()>
     where
         F: FnMut(Vec<Box<RawValue>>) -> Result<()>,
     {
@@ -70,7 +30,7 @@ impl SearchClient {
         loop {
             let data = BrowseRequest { cursor };
             let response = self
-                .post::<RawBrowseResponse, BrowseRequest>(&request_url, Some(&data))
+                .post::<BrowseResponse, BrowseRequest>(&request_url, Some(&data))
                 .await?;
             on_page(response.hits)?;
 
@@ -82,19 +42,6 @@ impl SearchClient {
 
         Ok(())
     }
-
-    /// Wrapper around `browse` to get all records from paginated response.
-    pub async fn list_records(&self, index_name: &str) -> Result<Vec<RecordWithObjectID>> {
-        let mut records: Vec<RecordWithObjectID> = vec![];
-
-        self.for_each_record_page(index_name, |page| {
-            records.extend(page);
-            Ok(())
-        })
-        .await?;
-
-        Ok(records)
-    }
 }
 
 #[cfg(test)]
@@ -103,31 +50,6 @@ mod tests {
     use httpmock::Method::POST;
     use httpmock::MockServer;
     use serde_json::json;
-
-    #[tokio::test]
-    async fn send_browse_request() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(POST).path("/1/indexes/test-index/browse");
-            then.status(200).json_body(
-                json!({"hits": [{"objectID": "1", "name": "foo"}], "cursor": "test-cursor"}),
-            );
-        });
-
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
-
-        let response = client.browse("test-index", None).await.unwrap();
-
-        mock.assert();
-
-        assert_eq!(response.hits.len(), 1);
-        assert_eq!(response.cursor.unwrap(), "test-cursor");
-    }
 
     #[tokio::test]
     async fn send_list_records_request() {
@@ -145,10 +67,21 @@ mod tests {
         )
         .unwrap();
 
-        let records = client.list_records("test-index").await.unwrap();
+        let mut records = Vec::new();
+        client
+            .list_records("test-index", |page| {
+                records.extend(page.into_iter().map(|record| record.get().to_string()));
+                Ok(())
+            })
+            .await
+            .unwrap();
 
         mock.assert();
 
         assert_eq!(records.len(), 1);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&records[0]).unwrap(),
+            json!({"objectID": "1", "name": "foo"})
+        );
     }
 }
