@@ -155,6 +155,13 @@ enum RecordsCommands {
         #[arg(short, long, value_name = "FILE")]
         file: Option<PathBuf>,
     },
+
+    /// List all records
+    #[command(visible_aliases = ["ls", "l", "browse"])]
+    List {
+        /// Index name
+        index_name: String,
+    }
 }
 
 /// Helper function to initialize a Search API client
@@ -230,6 +237,12 @@ pub async fn run() -> Result<()> {
                 let client = require_client()?;
 
                 cmd::import_records(&client, index_name, file, io::stdout()).await?;
+            }
+
+            RecordsCommands::List { index_name } => {
+                let client = require_client()?;
+
+                cmd::list_records(&client, index_name).await?;
             }
         },
     }

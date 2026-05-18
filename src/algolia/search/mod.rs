@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 pub mod delete_index;
 pub mod index_exists;
 pub mod list_indices;
+pub mod list_records;
 pub mod operation_index;
 pub mod push_records;
 pub mod wait_for_indexing_task;
