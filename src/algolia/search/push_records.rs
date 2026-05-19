@@ -122,9 +122,10 @@ impl SearchClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::algolia::search::test_support::AlgoliaMock;
+
     use super::*;
     use httpmock::Method::POST;
-    use httpmock::MockServer;
     use serde_json::json;
 
     #[test]
@@ -170,81 +171,119 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn push_records_sends_successfully() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(POST).path("/1/indexes/test-index/batch");
+    async fn push_records_succeeds() {
+        let api = AlgoliaMock::new();
+        let mock = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/batch")
+                .json_body(json!({"requests": [{"action": "addObject", "body": {"name": "foo"}}]}));
             then.status(200)
                 .header("content-type", "application/json")
-                .json_body(json!({"objectIDs": ["1", "2", "3"], "taskID": 123_456}));
+                .json_body(json!({"objectIDs": ["1"], "taskID": 123_456}));
         });
 
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
-
-        let test_json = vec![
-            json!({
-                "name": "foo",
-                "prop": "foo-prop",
-            }),
-            json!({
-                "name": "bar",
-                "prop": "bar-prop",
-            }),
-        ];
+        let test_json = vec![json!({
+            "name": "foo",
+        })];
 
         let test_records = test_json
             .into_iter()
             .map(|v| serde_json::from_value::<Record>(v).map_err(Into::into));
 
-        client
+        let response = api
+            .client
             .push_records("test-index", test_records)
             .await
             .unwrap();
+
+        assert_eq!(response.len(), 1);
+        assert_eq!(*response.first().unwrap(), 123_456);
+
         mock.assert();
     }
 
     #[tokio::test]
-    async fn upsert_records_sends_successfully() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(POST).path("/1/indexes/test-index/batch");
+    async fn upsert_records_succeeds() {
+        let api = AlgoliaMock::new();
+        let mock = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/batch")
+                .json_body(json!({"requests": [{"action": "updateObject", "body": {"objectID": "1", "name": "foo"}}]}));
             then.status(200)
                 .header("content-type", "application/json")
-                .json_body(json!({"objectIDs": ["1", "2", "3"], "taskID": 123_456}));
+                .json_body(json!({"objectIDs": ["1"], "taskID": 123_456}));
         });
 
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+        let test_json = vec![json!({
+            "objectID": "1",
+            "name": "foo",
+        })];
 
-        let test_json = vec![
-            json!({
-                "objectID": "1",
-                "name": "foo",
-                "prop": "foo-prop",
-            }),
-            json!({
-                "objectID": "2",
-                "name": "bar",
-                "prop": "bar-prop",
-            }),
-        ];
         let test_records = test_json
             .into_iter()
             .map(|v| serde_json::from_value::<RecordWithObjectID>(v).map_err(Into::into));
 
-        client
+        let response = api
+            .client
             .upsert_records("test-index", test_records)
             .await
             .unwrap();
+
+        assert_eq!(response.len(), 1);
+        assert_eq!(*response.first().unwrap(), 123_456);
+
         mock.assert();
+    }
+
+    #[tokio::test]
+    async fn push_records_batches_at_1000_records() {
+        let api = AlgoliaMock::new();
+
+        let first_batch = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/batch")
+                .is_true(|req| {
+                    let body: serde_json::Value = serde_json::from_slice(req.body_ref()).unwrap();
+                    body["requests"].as_array().unwrap().len() == 1000
+                        && body["requests"][0]["action"] == "addObject"
+                });
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"objectIDs": [], "taskID": 1}));
+        });
+
+        let second_batch = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/batch")
+                .is_true(|req| {
+                    let body: serde_json::Value = serde_json::from_slice(req.body_ref()).unwrap();
+                    body["requests"].as_array().unwrap().len() == 1
+                        && body["requests"][0]["action"] == "addObject"
+                });
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"objectIDs": [], "taskID": 2}));
+        });
+
+        let records = (0..1001).map(|i| {
+            let record = serde_json::from_value::<Record>(json!({
+                "name": format!("record-{i}")
+            }))
+            .unwrap();
+
+            Ok(record)
+        });
+
+        let task_ids = api
+            .client
+            .push_records("test-index", records)
+            .await
+            .unwrap();
+
+        assert_eq!(task_ids, vec![1, 2]);
+        first_batch.assert();
+        second_batch.assert();
     }
 }

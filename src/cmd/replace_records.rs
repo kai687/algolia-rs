@@ -24,7 +24,7 @@ pub async fn replace_records<W: std::io::Write>(
         ]),
     };
 
-    let copy_response = client.copy_index(&index_name, &op).await?;
+    let copy_response = client.copy_index(&index_name, op).await?;
     client
         .wait_for_task(&tmp_index, copy_response.task_id)
         .await?;
@@ -47,13 +47,13 @@ pub async fn replace_records<W: std::io::Write>(
         destination: index_name.clone(),
     };
 
-    let move_response_result = client.move_index(&tmp_index, &move_op).await;
+    let move_response_result = client.move_index(&tmp_index, move_op).await;
 
     match move_response_result {
         Ok(response) => client.wait_for_task(&index_name, response.task_id).await?,
         Err(err) => {
             // Clean up temporary index (don't need to wait)
-            let _ = client.delete_index(&tmp_index).await?;
+            let _ = client.delete_index(&tmp_index).await;
             return Err(err);
         }
     }
@@ -61,4 +61,233 @@ pub async fn replace_records<W: std::io::Write>(
     writeln!(writer, "Replaced records in {index_name}")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::algolia::search::test_support::AlgoliaMock;
+    use httpmock::Method::{DELETE, GET, POST};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn replace_records_succeeds() {
+        let api = AlgoliaMock::new();
+
+        let copy = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/operation")
+                .json_body(json!({
+                    "operation": "copy",
+                    "destination": "test-index-tmp",
+                    "scope": ["settings", "rules", "synonyms"]
+                }));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "taskID": 1,
+                    "updatedAt": "2026-0519T08:50:12.848Z"
+                }));
+        });
+
+        let wait_copy = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/1",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let upload = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index-tmp/batch")
+                .json_body(json!({
+                    "requests": [
+                    {
+                        "action": "updateObject",
+                        "body": {
+                            "objectID": "1",
+                            "name": "foo"
+                        }
+                    }
+                    ]
+                }));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "objectIDs": ["1"],
+                    "taskID": 2,
+                }));
+        });
+
+        let wait_upload = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/2",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let move_index = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index-tmp/operation")
+                .json_body(json!({
+                    "operation": "move",
+                    "destination": "test-index"
+                }));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "taskID": 3,
+                    "updatedAt": "2026-0519T08:50:12.848Z"
+                }));
+        });
+
+        let wait_move = api.json_response(
+            GET,
+            "/1/indexes/test-index/task/3",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let path = std::env::temp_dir().join(format!(
+            "algolia-rs-replace-test-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, r#"{"objectID":"1","name":"foo"}"#).unwrap();
+        let mut output = Vec::new();
+
+        replace_records(
+            &api.client,
+            "test-index".to_string(),
+            Some(path.clone()),
+            &mut output,
+        )
+        .await
+        .unwrap();
+
+        std::fs::remove_file(path).unwrap();
+
+        copy.assert();
+        wait_copy.assert();
+        upload.assert();
+        wait_upload.assert();
+        move_index.assert();
+        wait_move.assert();
+
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Replaced records in test-index\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_records_deletes_tmp_index_when_move_fails() {
+        let api = AlgoliaMock::new();
+
+        let copy = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/operation")
+                .json_body(json!({
+                    "operation": "copy",
+                    "destination": "test-index-tmp",
+                    "scope": ["settings", "rules", "synonyms"]
+                }));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "taskID": 1,
+                    "updatedAt": "2026-0519T08:50:12.848Z"
+                }));
+        });
+
+        let wait_copy = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/1",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let upload = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index-tmp/batch")
+                .json_body(json!({
+                    "requests": [
+                    {
+                        "action": "updateObject",
+                        "body": {
+                            "objectID": "1",
+                            "name": "foo"
+                        }
+                    }
+                    ]
+                }));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "objectIDs": ["1"],
+                    "taskID": 2,
+                }));
+        });
+
+        let wait_upload = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/2",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let move_index = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index-tmp/operation")
+                .json_body(json!({
+                    "operation": "move",
+                    "destination": "test-index"
+                }));
+
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "message": "move failed",
+                    "status": 500
+                }));
+        });
+
+        let delete_tmp = api.json_response(
+            DELETE,
+            "/1/indexes/test-index-tmp",
+            200,
+            json!({"taskID": 4, "deletedAt": "2026-05-19T08:50:12.848Z"}),
+        );
+
+
+        let path = std::env::temp_dir().join(format!(
+            "algolia-rs-replace-test-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, r#"{"objectID":"1","name":"foo"}"#).unwrap();
+        let mut output = Vec::new();
+
+        let result = replace_records(
+            &api.client,
+            "test-index".to_string(),
+            Some(path.clone()),
+            &mut output,
+        )
+        .await;
+
+        std::fs::remove_file(path).unwrap();
+
+        assert!(result.is_err());
+
+        copy.assert();
+        wait_copy.assert();
+        upload.assert();
+        wait_upload.assert();
+        move_index.assert();
+        delete_tmp.assert();
+    }
 }

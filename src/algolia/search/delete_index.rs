@@ -38,32 +38,25 @@ impl SearchClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::algolia::search::test_support::AlgoliaMock;
     use httpmock::Method::DELETE;
-    use httpmock::MockServer;
-    use serde_json::json;
 
     #[tokio::test]
-    async fn delete_index() {
-        let server = MockServer::start();
+    async fn delete_index_succeeds() {
+        let api = AlgoliaMock::new();
 
-        let mock = server.mock(|when, then| {
-            when.method(DELETE).path("/1/indexes/test-index");
-            then.status(200)
-                .header("content-type", "application/json")
-                .json_body(json!({"taskID": 123_456, "deletedAt": "2026-05-14T19:44"}));
-        });
+        let mock = api.json_response(
+            DELETE,
+            "/1/indexes/test-index",
+            200,
+            serde_json::json!({"taskID": 123_456, "deletedAt": "2026-05-14T19:44" }),
+        );
 
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+        let response = api.client.delete_index("test-index").await.unwrap();
 
-        let response = client.delete_index("test-index").await.unwrap();
-        mock.assert();
         assert_eq!(response.task_id, 123_456);
         assert!(!response.deleted_at.is_empty());
+
+        mock.assert();
     }
 }

@@ -33,7 +33,7 @@ pub async fn copy_index<W: std::io::Write>(
     };
 
     let response = client
-        .copy_index(&index_name, &data)
+        .copy_index(&index_name, data)
         .await
         .context("Can't copy index")?;
 

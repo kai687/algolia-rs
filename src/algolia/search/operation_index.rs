@@ -30,7 +30,7 @@ pub struct MoveOperation {
 
 /// The request body for copying or moving an index
 #[derive(Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "operation", rename_all = "camelCase")]
 pub enum IndexOperation {
     Copy(CopyOperation),
     Move(MoveOperation),
@@ -41,30 +41,33 @@ impl SearchClient {
     pub async fn copy_index(
         &self,
         index_name: &str,
-        data: &CopyOperation,
+        data: CopyOperation,
     ) -> Result<UpdatedAtResponse> {
         let request_url = format!("/indexes/{index_name}/operation");
+        let operation = IndexOperation::Copy(data);
 
-        self.post(&request_url, &data).await
+        self.post(&request_url, &operation).await
     }
 
     /// Move (rename) an index
     pub async fn move_index(
         &self,
         index_name: &str,
-        data: &MoveOperation,
+        data: MoveOperation,
     ) -> Result<UpdatedAtResponse> {
         let request_url = format!("/indexes/{index_name}/operation");
+        let operation = IndexOperation::Move(data);
 
-        self.post(&request_url, &data).await
+        self.post(&request_url, &operation).await
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::algolia::search::test_support::AlgoliaMock;
+
     use super::*;
     use httpmock::Method::POST;
-    use httpmock::MockServer;
     use serde_json::json;
 
     #[test]
@@ -78,7 +81,7 @@ mod tests {
         assert_eq!(
             op_json,
             json!({
-                "type": "copy",
+                "operation": "copy",
                 "destination": "new_index"
             })
         );
@@ -95,7 +98,7 @@ mod tests {
         assert_eq!(
             op_json,
             json!({
-                "type": "copy",
+                "operation": "copy",
                 "destination": "new_index",
                 "scope": ["settings", "synonyms"]
             })
@@ -112,72 +115,90 @@ mod tests {
         assert_eq!(
             op_json,
             json!({
-                "type": "move",
+                "operation": "move",
                 "destination": "new_index"
             })
         );
     }
 
     #[tokio::test]
-    async fn copy_indices_request() {
-        let server = MockServer::start();
+    async fn copy_indices_succeeds() {
+        let api = AlgoliaMock::new();
 
-        let mock = server.mock(|when, then| {
-            when.method(POST).path("/1/indexes/test-index/operation");
+        let mock = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/operation")
+                .json_body(json!({"operation": "copy", "destination": "test-destination"}));
+
             then.status(200)
                 .header("content-type", "application/json")
-                .json_body(json!({
-                    "taskID": 123_456,
-                    "updatedAt": "2026-04-29T08:50:12.848Z",
-                }));
+                .json_body(json!({"taskID": 123_456, "updatedAt": "2026-04-29T08:50:12.848Z" }));
         });
-
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
 
         let data = CopyOperation {
             destination: "test-destination".to_string(),
             scope: None,
         };
 
-        let response = client.copy_index("test-index", &data).await.unwrap();
-        mock.assert();
+        let response = api.client.copy_index("test-index", data).await.unwrap();
         assert_eq!(response.task_id, 123_456);
-        assert!(!response.updated_at.is_empty());
+        assert_eq!(response.updated_at, "2026-04-29T08:50:12.848Z");
+
+        mock.assert();
     }
 
     #[tokio::test]
-    async fn move_index_request() {
-        let server = MockServer::start();
+    async fn scoped_copy_indices_succeeds() {
+        let api = AlgoliaMock::new();
 
-        let mock = server.mock(|when, then| {
-            when.method(POST).path("/1/indexes/test-index/operation");
+        let mock = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/operation")
+                .json_body(json!({"operation": "copy", "destination": "test-destination", "scope": ["settings", "synonyms", "rules"]}));
+
             then.status(200)
                 .header("content-type", "application/json")
-                .json_body(json!({
-                    "taskID": 123_456,
-                    "updatedAt": "2026-04-29T08:50:12.848Z",
-                }));
+                .json_body(json!({"taskID": 123_456, "updatedAt": "2026-04-29T08:50:12.848Z" }));
         });
 
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+        let data = CopyOperation {
+            destination: "test-destination".to_string(),
+            scope: Some(vec![
+                OperationScope::Settings,
+                OperationScope::Synonyms,
+                OperationScope::Rules,
+            ]),
+        };
+
+        let response = api.client.copy_index("test-index", data).await.unwrap();
+        assert_eq!(response.task_id, 123_456);
+        assert_eq!(response.updated_at, "2026-04-29T08:50:12.848Z");
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn move_indices_succeeds() {
+        let api = AlgoliaMock::new();
+
+        let mock = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/operation")
+                .json_body(json!({"operation": "move", "destination": "test-destination"}));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"taskID": 123_456, "updatedAt": "2026-04-29T08:50:12.848Z" }));
+        });
 
         let data = MoveOperation {
             destination: "test-destination".to_string(),
         };
 
-        let response = client.move_index("test-index", &data).await.unwrap();
-        mock.assert();
+        let response = api.client.move_index("test-index", data).await.unwrap();
         assert_eq!(response.task_id, 123_456);
-        assert!(!response.updated_at.is_empty());
+        assert_eq!(response.updated_at, "2026-04-29T08:50:12.848Z");
+
+        mock.assert();
     }
 }
