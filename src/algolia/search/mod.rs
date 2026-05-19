@@ -74,6 +74,7 @@ impl SearchClient {
 
         let body = response.text().await.unwrap_or_default();
 
+        // Try to deserialize 'known' errors from the API
         match serde_json::from_str::<AlgoliaApiError>(&body) {
             Ok(err) => Err(AlgoliaApiError {
                 status: status.as_u16(),
@@ -87,17 +88,24 @@ impl SearchClient {
     /// Wrapper for GET requests (returns JSON response)
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
+
         self.send(self.http.get(request_url)).await
     }
 
-    /// Wrapper for POST requests (Returns JSON response)
-    async fn post<T: DeserializeOwned, D: Serialize>(
-        &self,
-        path: &str,
-        data: Option<&D>,
-    ) -> Result<T> {
+    /// Wrapper for POST requests with a request body (Returns JSON response)
+    async fn post<T: DeserializeOwned, D: Serialize>(&self, path: &str, data: &D) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
-        self.send(self.http.post(request_url).json(&data)).await
+        let request = self.http.post(request_url).json(data);
+
+        self.send(request).await
+    }
+
+    /// Wrapper for POST requests without request body
+    async fn post_without_body<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let request_url = format!("{}{}", self.base_url, path);
+        let request = self.http.post(request_url);
+
+        self.send(request).await
     }
 
     /// Wrapper for DELETE requests (Returns JSON response)
@@ -165,7 +173,7 @@ mod tests {
     #[tokio::test]
     async fn get_request_succeeds() {
         let api = AlgoliaMock::new();
-        let mock = api.mock_response(GET, "/1/testing", 200, json!({}));
+        let mock = api.json_response(GET, "/1/testing", 200, json!({}));
 
         api.client
             .get::<serde_json::Value>("/testing")
@@ -178,7 +186,7 @@ mod tests {
     #[tokio::test]
     async fn get_request_fails_with_algolia_api_error() {
         let api = AlgoliaMock::new();
-        let mock = api.mock_response(
+        let mock = api.json_response(
             GET,
             "/1/testing",
             404,
@@ -202,7 +210,7 @@ mod tests {
     #[tokio::test]
     async fn get_request_fails_with_different_error() {
         let api = AlgoliaMock::new();
-        let mock = api.mock_response(
+        let mock = api.json_response(
             GET,
             "/1/testing",
             503,
@@ -220,6 +228,39 @@ mod tests {
         mock.assert();
     }
 
+    #[tokio::test]
+    async fn error_response_includes_status_and_body() {
+        let api = AlgoliaMock::new();
+        let mock = api.text_response(GET, "/1/testing", 503, "Service unavailable");
+
+        let error = api
+            .client
+            .get::<serde_json::Value>("/testing")
+            .await
+            .unwrap_err();
+
+        let error_message = error.to_string();
+        assert!(error_message.contains("HTTP 503"));
+        assert!(error_message.contains("Service unavailable"));
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn get_request_fails_for_non_json_response() {
+        let api = AlgoliaMock::new();
+        let mock = api.text_response(GET, "/1/testing", 200, "not json");
+
+        let error = api
+            .client
+            .get::<serde_json::Value>("/testing")
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Can't deserialize response"));
+        mock.assert();
+    }
+
     #[derive(Serialize)]
     struct TestData {
         foo: String,
@@ -227,16 +268,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_sends_request_with_data() {
+    async fn post_request_with_data() {
         let api = AlgoliaMock::new();
-        let mock = api.mock_response(POST, "/1/testing", 201, json!({}));
+
+        let mock = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/testing")
+                .json_body(json!({"foo": "foo", "bar": "bar"}));
+            then.status(201).json_body(json!({}));
+        });
+
         let data = TestData {
             foo: "foo".to_string(),
             bar: "bar".to_string(),
         };
 
         api.client
-            .post::<serde_json::Value, TestData>("/testing", Some(&data))
+            .post::<serde_json::Value, TestData>("/testing", &data)
             .await
             .unwrap();
 
@@ -244,12 +292,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_sends_request_without_data() {
+    async fn post_request_without_body() {
         let api = AlgoliaMock::new();
-        let mock = api.mock_response(POST, "/1/testing", 201, json!({}));
+        let mock = api.server.mock(|when, then| {
+            when.method(POST).path("/1/testing").body("");
+            then.status(201).json_body(json!({}));
+        });
 
         api.client
-            .post::<serde_json::Value, serde_json::Value>("/testing", None)
+            .post_without_body::<serde_json::Value>("/testing")
             .await
             .unwrap();
 
@@ -259,13 +310,79 @@ mod tests {
     #[tokio::test]
     async fn delete_request_succeeds() {
         let api = AlgoliaMock::new();
-        let mock = api.mock_response(DELETE, "/1/testing", 200, json!({}));
+        let mock = api.json_response(DELETE, "/1/testing", 200, json!({}));
 
         api.client
             .delete::<serde_json::Value>("/testing")
             .await
             .unwrap();
+
         mock.assert();
+    }
+
+    #[test]
+    fn record_converts_to_record_with_object_id() {
+        let record = Record(
+            serde_json::from_value(json!({"objectID": "1", "name": "test-record"})).unwrap(),
+        );
+
+        let converted = RecordWithObjectID::try_from(record).unwrap();
+        assert_eq!(converted.object_id, "1");
+        assert_eq!(converted.fields["name"], json!("test-record"));
+    }
+
+    #[test]
+    fn record_conversion_fails_without_object_id() {
+        let record = Record(serde_json::from_value(json!({"name": "test-record"})).unwrap());
+
+        let result = RecordWithObjectID::try_from(record);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn updated_at_response_formats_display() {
+        let response = UpdatedAtResponse {
+            updated_at: "2026-05-19T08:34:05Z".to_string(),
+            task_id: 123_456,
+        };
+
+        let output = response.to_string();
+        assert!(output.contains("Task"));
+        assert!(output.contains("2026-05-19 08:34:05"));
+    }
+
+    #[test]
+    fn updated_at_response_invalid_updated_at() {
+        let response = UpdatedAtResponse {
+            updated_at: "now".to_string(),
+            task_id: 123_456,
+        };
+
+        let mut output = String::new();
+        let result = fmt::write(&mut output, format_args!("{response}"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn new_with_base_url_fails_for_invalid_application_id() {
+        let result = SearchClient::new_with_base_url(
+            "bad\nvalue",
+            "test-key",
+            "http://localhost".to_string(),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn new_with_base_url_fails_for_invalid_api_key() {
+        let result = SearchClient::new_with_base_url(
+            "test-app",
+            "bad\nvalue",
+            "http://localhost".to_string(),
+        );
+
+        assert!(result.is_err());
     }
 }
 
@@ -292,7 +409,7 @@ pub(crate) mod test_support {
             Self { server, client }
         }
 
-        pub(crate) fn mock_response(
+        pub(crate) fn json_response(
             &self,
             method: Method,
             path: &str,
@@ -308,6 +425,25 @@ pub(crate) mod test_support {
                 then.status(status)
                     .header("content-type", "application/json")
                     .json_body(body);
+            })
+        }
+
+        pub(crate) fn text_response(
+            &self,
+            method: Method,
+            path: &str,
+            status: u16,
+            body: &str,
+        ) -> Mock<'_> {
+            self.server.mock(|when, then| {
+                when.method(method)
+                    .path(path)
+                    .header("x-algolia-application-id", "test-app")
+                    .header("x-algolia-api-key", "test-key");
+
+                then.status(status)
+                    .header("content-type", "application/json")
+                    .body(body);
             })
         }
     }

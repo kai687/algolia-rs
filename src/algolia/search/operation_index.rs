@@ -45,7 +45,7 @@ impl SearchClient {
     ) -> Result<UpdatedAtResponse> {
         let request_url = format!("/indexes/{index_name}/operation");
 
-        self.post(&request_url, Some(&data)).await
+        self.post(&request_url, &data).await
     }
 
     /// Move (rename) an index
@@ -56,7 +56,7 @@ impl SearchClient {
     ) -> Result<UpdatedAtResponse> {
         let request_url = format!("/indexes/{index_name}/operation");
 
-        self.post(&request_url, Some(&data)).await
+        self.post(&request_url, &data).await
     }
 }
 

@@ -78,7 +78,7 @@ impl SearchClient {
     ) -> Result<BatchResponse> {
         let request_url = format!("/indexes/{index_name}/batch");
         let request = BatchRequest::new(records);
-        self.post(&request_url, Some(&request)).await
+        self.post(&request_url, &request).await
     }
 
     /// Helper function to make a chunked batch request

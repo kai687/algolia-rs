@@ -30,7 +30,7 @@ impl SearchClient {
         loop {
             let data = BrowseRequest { cursor };
             let response = self
-                .post::<BrowseResponse, BrowseRequest>(&request_url, Some(&data))
+                .post::<BrowseResponse, BrowseRequest>(&request_url, &data)
                 .await?;
             on_page(response.hits)?;
 
