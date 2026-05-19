@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 
 pub mod delete_index;
-// pub mod index_exists;
+pub mod get_settings;
+pub mod index_exists;
 pub mod list_indices;
 pub mod list_records;
 pub mod operation_index;
@@ -96,14 +97,6 @@ impl SearchClient {
     async fn post<T: DeserializeOwned, D: Serialize>(&self, path: &str, data: &D) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
         let request = self.http.post(request_url).json(data);
-
-        self.send(request).await
-    }
-
-    /// Wrapper for POST requests without request body
-    async fn post_without_body<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let request_url = format!("{}{}", self.base_url, path);
-        let request = self.http.post(request_url);
 
         self.send(request).await
     }
@@ -285,22 +278,6 @@ mod tests {
 
         api.client
             .post::<serde_json::Value, TestData>("/testing", &data)
-            .await
-            .unwrap();
-
-        mock.assert();
-    }
-
-    #[tokio::test]
-    async fn post_request_without_body() {
-        let api = AlgoliaMock::new();
-        let mock = api.server.mock(|when, then| {
-            when.method(POST).path("/1/testing").body("");
-            then.status(201).json_body(json!({}));
-        });
-
-        api.client
-            .post_without_body::<serde_json::Value>("/testing")
             .await
             .unwrap();
 
