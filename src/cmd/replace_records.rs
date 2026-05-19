@@ -13,54 +13,60 @@ pub async fn replace_records<W: std::io::Write>(
 ) -> Result<()> {
     let input = super::file_or_stdin(file.as_ref())?;
     let tmp_index = format!("{index_name}-tmp");
+    let mut tmp_index_created = false;
 
-    // Step 1. Copy index (settings, rules, synonyms) to temp index
-    let op = CopyOperation {
-        destination: tmp_index.clone(),
-        scope: Some(vec![
-            OperationScope::Settings,
-            OperationScope::Rules,
-            OperationScope::Synonyms,
-        ]),
-    };
+    let result = async {
+        // Step 1. Copy index (settings, rules, synonyms) to temp index
+        let op = CopyOperation {
+            destination: tmp_index.clone(),
+            scope: Some(vec![
+                OperationScope::Settings,
+                OperationScope::Rules,
+                OperationScope::Synonyms,
+            ]),
+        };
 
-    let copy_response = client.copy_index(&index_name, op).await?;
-    client
-        .wait_for_task(&tmp_index, copy_response.task_id)
-        .await?;
+        let copy_response = client.copy_index(&index_name, op).await?;
+        tmp_index_created = true;
 
-    // Step 2. Add records from file to temp index
-    let records = serde_json::Deserializer::from_reader(input)
-        .into_iter::<RecordWithObjectID>()
-        .map(|record| record.map_err(Into::into));
+        client
+            .wait_for_task(&tmp_index, copy_response.task_id)
+            .await?;
 
-    let upsert_task_ids = client
-        .upsert_records(&tmp_index, records.into_iter())
-        .await?;
 
-    for task_id in upsert_task_ids {
-        client.wait_for_task(&tmp_index, task_id).await?;
-    }
+        // Step 2. Add records from file to temp index
+        let records = serde_json::Deserializer::from_reader(input)
+            .into_iter::<RecordWithObjectID>()
+            .map(|record| record.map_err(Into::into));
 
-    // Step 3. Move temp index to main index, overwriting it
-    let move_op = MoveOperation {
-        destination: index_name.clone(),
-    };
+        let upsert_task_ids = client
+            .upsert_records(&tmp_index, records.into_iter())
+            .await?;
 
-    let move_response_result = client.move_index(&tmp_index, move_op).await;
-
-    match move_response_result {
-        Ok(response) => client.wait_for_task(&index_name, response.task_id).await?,
-        Err(err) => {
-            // Clean up temporary index (don't need to wait)
-            let _ = client.delete_index(&tmp_index).await;
-            return Err(err);
+        for task_id in upsert_task_ids {
+            client.wait_for_task(&tmp_index, task_id).await?;
         }
+
+        // Step 3. Move temp index to main index, overwriting it
+        let move_op = MoveOperation {
+            destination: index_name.clone(),
+        };
+
+        let move_response = client.move_index(&tmp_index, move_op).await?;
+        client.wait_for_task(&index_name, move_response.task_id).await?;
+
+        writeln!(writer, "Replaced records in {index_name}")?;
+
+        Ok(())
+    }
+    .await;
+
+    // Ensure cleanup of temporary index
+    if result.is_err() && tmp_index_created {
+        let _ = client.delete_index(&tmp_index).await;
     }
 
-    writeln!(writer, "Replaced records in {index_name}")?;
-
-    Ok(())
+    result
 }
 
 #[cfg(test)]
