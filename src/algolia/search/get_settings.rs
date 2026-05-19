@@ -14,13 +14,18 @@ impl SearchClient {
 
 #[cfg(test)]
 mod tests {
-    use httpmock::Method::GET;
     use crate::algolia::search::test_support::AlgoliaMock;
+    use httpmock::Method::GET;
 
     #[tokio::test]
     async fn get_settings_succeeds() {
         let api = AlgoliaMock::new();
-        let mock = api.json_response(GET, "/1/indexes/test-index/settings", 200, serde_json::json!({"distinct": true}));
+        let mock = api.json_response(
+            GET,
+            "/1/indexes/test-index/settings",
+            200,
+            serde_json::json!({"distinct": true}),
+        );
 
         api.client.get_settings("test-index").await.unwrap();
 

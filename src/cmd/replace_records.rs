@@ -263,7 +263,6 @@ mod tests {
             json!({"taskID": 4, "deletedAt": "2026-05-19T08:50:12.848Z"}),
         );
 
-
         let path = std::env::temp_dir().join(format!(
             "algolia-rs-replace-test-{}.json",
             std::process::id()
