@@ -75,6 +75,13 @@ mod tests {
     use crate::algolia::search::test_support::AlgoliaMock;
     use httpmock::Method::{DELETE, GET, POST};
     use serde_json::json;
+    use std::io::Write;
+
+    fn record_file() -> tempfile::NamedTempFile {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        write!(file, r#"{{"objectID":"1","name":"foo"}}"#).unwrap();
+        file
+    }
 
     #[tokio::test]
     async fn replace_records_succeeds() {
@@ -93,7 +100,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "taskID": 1,
-                    "updatedAt": "2026-0519T08:50:12.848Z"
+                    "updatedAt": "2026-05-19T08:50:12.848Z"
                 }));
         });
 
@@ -146,7 +153,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "taskID": 3,
-                    "updatedAt": "2026-0519T08:50:12.848Z"
+                    "updatedAt": "2026-05-19T08:50:12.848Z"
                 }));
         });
 
@@ -157,23 +164,17 @@ mod tests {
             json!({"status": "published"}),
         );
 
-        let path = std::env::temp_dir().join(format!(
-            "algolia-rs-replace-test-{}.json",
-            std::process::id()
-        ));
-        std::fs::write(&path, r#"{"objectID":"1","name":"foo"}"#).unwrap();
+        let file = record_file();
         let mut output = Vec::new();
 
         replace_records(
             &api.client,
             "test-index".to_string(),
-            Some(path.clone()),
+            Some(file.path().to_path_buf()),
             &mut output,
         )
         .await
         .unwrap();
-
-        std::fs::remove_file(path).unwrap();
 
         copy.assert();
         wait_copy.assert();
@@ -205,7 +206,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "taskID": 1,
-                    "updatedAt": "2026-0519T08:50:12.848Z"
+                    "updatedAt": "2026-05-19T08:50:12.848Z"
                 }));
         });
 
@@ -269,22 +270,16 @@ mod tests {
             json!({"taskID": 4, "deletedAt": "2026-05-19T08:50:12.848Z"}),
         );
 
-        let path = std::env::temp_dir().join(format!(
-            "algolia-rs-replace-test-{}.json",
-            std::process::id()
-        ));
-        std::fs::write(&path, r#"{"objectID":"1","name":"foo"}"#).unwrap();
+        let file = record_file();
         let mut output = Vec::new();
 
         let result = replace_records(
             &api.client,
             "test-index".to_string(),
-            Some(path.clone()),
+            Some(file.path().to_path_buf()),
             &mut output,
         )
         .await;
-
-        std::fs::remove_file(path).unwrap();
 
         assert!(result.is_err());
 

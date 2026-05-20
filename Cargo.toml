@@ -27,6 +27,8 @@ toml = "1.1.2"
 
 [dev-dependencies]
 httpmock = "0.8.3"
+serial_test = "3.4.0"
+tempfile = "3.27.0"
 
 [lints.clippy]
 pedantic = "warn"

@@ -46,29 +46,38 @@ impl SearchClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::algolia::search::test_support::AlgoliaMock;
     use httpmock::Method::POST;
-    use httpmock::MockServer;
     use serde_json::json;
 
     #[tokio::test]
-    async fn send_list_records_request() {
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(POST).path("/1/indexes/test-index/browse");
+    async fn list_records_succeeds() {
+        let api = AlgoliaMock::new();
+
+        let first_page = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/browse")
+                .json_body(json!({}));
+
             then.status(200)
-                .json_body(json!({"hits": [{"objectID": "1", "name": "foo"}]}));
+                .header("content-type", "application/json")
+                .json_body(
+                    json!({"hits": [{"objectID": "1", "name": "foo"}], "cursor": "next-page"}),
+                );
         });
 
-        let client = SearchClient::new_with_base_url(
-            "test-app",
-            "test-key",
-            format!("{}/1", server.base_url()),
-        )
-        .unwrap();
+        let second_page = api.server.mock(|when, then| {
+            when.method(POST)
+                .path("/1/indexes/test-index/browse")
+                .json_body(json!({"cursor": "next-page"}));
+
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"hits": [{"objectID": "2", "name": "bar"}]}));
+        });
 
         let mut records = Vec::new();
-        client
+        api.client
             .list_records("test-index", |page| {
                 records.extend(page.into_iter().map(|record| record.get().to_string()));
                 Ok(())
@@ -76,12 +85,17 @@ mod tests {
             .await
             .unwrap();
 
-        mock.assert();
+        first_page.assert();
+        second_page.assert();
 
-        assert_eq!(records.len(), 1);
+        assert_eq!(records.len(), 2);
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&records[0]).unwrap(),
             json!({"objectID": "1", "name": "foo"})
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&records[1]).unwrap(),
+            json!({"objectID": "2", "name": "bar"})
         );
     }
 }
