@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{Context, Result};
 
 /// List index settings
-pub async fn list_settings<W: std::io::Write>(
+pub async fn get_settings<W: std::io::Write>(
     client: &SearchClient,
     index_name: &str,
     global_opts: &GlobalOpts,

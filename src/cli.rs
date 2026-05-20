@@ -184,7 +184,7 @@ enum RecordsCommands {
 enum SettingsCommands {
     /// List index settings
     #[command(visible_aliases = ["ls", "l"])]
-    List {
+    Get {
         /// Index name
         index_name: String,
     },
@@ -295,16 +295,16 @@ pub async fn run() -> Result<()> {
         },
 
         Commands::Settings { subcommand } => match subcommand {
-            SettingsCommands::List { index_name } => {
+            SettingsCommands::Get { index_name } => {
                 let client = require_client()?;
 
-                cmd::list_settings(&client, &index_name, &cli.global, io::stdout()).await?;
+                cmd::get_settings(&client, &index_name, &cli.global, io::stdout()).await?;
             }
 
             SettingsCommands::Import { index_name, file } => {
                 let client = require_client()?;
 
-                cmd::import_settings(&client, &index_name, file, io::stdout()).await?;
+                cmd::import_settings(&client, &index_name, file, &cli.global, io::stdout()).await?;
             }
         },
     }

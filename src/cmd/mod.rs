@@ -24,7 +24,7 @@ pub mod replace_records;
 pub use replace_records::replace_records;
 
 pub mod list_settings;
-pub use list_settings::list_settings;
+pub use list_settings::get_settings;
 
 pub mod import_settings;
 pub use import_settings::import_settings;
