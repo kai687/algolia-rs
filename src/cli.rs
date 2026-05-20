@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum, Args};
 use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
 use dialoguer::Confirm;
@@ -11,7 +11,7 @@ use crate::auth;
 use crate::cmd;
 
 /// Handle different output options
-#[derive(Clone, Default, clap::ValueEnum)]
+#[derive(Clone, Default, ValueEnum)]
 pub enum OutputFormat {
     #[default]
     Pretty,
@@ -19,7 +19,7 @@ pub enum OutputFormat {
 }
 
 /// Options that are valid in many commands
-#[derive(clap::Args)]
+#[derive(Args)]
 pub struct GlobalOpts {
     /// Output format
     #[arg(short, long, global = true)]
@@ -59,7 +59,7 @@ pub fn confirm_operation(msg: &str) -> bool {
 }
 
 /// CLI for working with Algolia's APIs
-#[derive(clap::Parser)]
+#[derive(Parser)]
 #[command(name = "Algolia", version, args_conflicts_with_subcommands = true)]
 struct Cli {
     #[command(subcommand)]
@@ -70,7 +70,7 @@ struct Cli {
 }
 
 /// `clap_complete::Shell` + Nushell
-#[derive(Clone, clap::ValueEnum)]
+#[derive(Clone, ValueEnum)]
 pub enum AnyShell {
     Bash,
     Zsh,
@@ -82,7 +82,7 @@ pub enum AnyShell {
     Nushell,
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Subcommand)]
 enum Commands {
     /// Work with indices
     #[command(visible_aliases = ["index", "i"])]
@@ -98,6 +98,12 @@ enum Commands {
         subcommand: RecordsCommands,
     },
 
+    /// Work with index settings
+    Settings {
+        #[command(subcommand)]
+        subcommand: SettingsCommands,
+    },
+
     /// Generate completion scripts
     Completions {
         /// The shell for which to generate completions
@@ -106,7 +112,7 @@ enum Commands {
     },
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Subcommand)]
 enum IndicesCommands {
     /// List indices
     #[command(visible_aliases = ["ls", "l"])]
@@ -143,7 +149,7 @@ enum IndicesCommands {
     },
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Subcommand)]
 enum RecordsCommands {
     /// Import records from a file (or standard input)
     #[command(visible_aliases = ["upsert", "p"])]
@@ -172,6 +178,16 @@ enum RecordsCommands {
         /// Index name
         index_name: String,
     },
+}
+
+#[derive(Subcommand)]
+enum SettingsCommands {
+    /// List index settings
+    #[command(visible_aliases = ["ls", "l"])]
+    List {
+        /// Index name
+        index_name: String,
+    }
 }
 
 /// Helper function to initialize a Search API client
@@ -240,7 +256,7 @@ pub async fn run() -> Result<()> {
                 }
                 AnyShell::Nushell => generate(Nushell, &mut cmd, name, &mut io::stdout()),
             }
-        }
+        },
 
         Commands::Records { subcommand } => match subcommand {
             RecordsCommands::Import { index_name, file } => {
@@ -262,6 +278,15 @@ pub async fn run() -> Result<()> {
                 cmd::replace_records(&client, index_name, file, io::stdout()).await?;
             }
         },
+
+        Commands::Settings { subcommand } => match subcommand {
+            SettingsCommands::List { index_name } => {
+                let client = require_client()?;
+
+                cmd::list_settings(&client, index_name, &cli.global, io::stdout()).await?;
+            }
+        }
+
     }
 
     Ok(())
