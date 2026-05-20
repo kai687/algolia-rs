@@ -8,7 +8,7 @@ use colored::Colorize;
 /// Copy an index
 pub async fn move_index<W: std::io::Write>(
     client: &SearchClient,
-    index_name: String,
+    index_name: &str,
     destination: &str,
     global_opts: &GlobalOpts,
     mut writer: W,
@@ -26,7 +26,7 @@ pub async fn move_index<W: std::io::Write>(
     };
 
     let response = client
-        .move_index(&index_name, data)
+        .move_index(index_name, data)
         .await
         .context("Can't move index")?;
 

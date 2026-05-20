@@ -31,7 +31,7 @@ impl IntoBatchRequestItem for AnyRecord {
 
 pub async fn import_records<W: std::io::Write>(
     client: &SearchClient,
-    index_name: String,
+    index_name: &str,
     file: Option<PathBuf>,
     mut writer: W,
 ) -> Result<()> {
@@ -48,7 +48,7 @@ pub async fn import_records<W: std::io::Write>(
 
     if !records_to_upsert.is_empty() {
         let task_ids = client
-            .upsert_records(&index_name, records_to_upsert.into_iter().map(Ok))
+            .upsert_records(index_name, records_to_upsert.into_iter().map(Ok))
             .await?;
         writeln!(
             writer,
@@ -60,7 +60,7 @@ pub async fn import_records<W: std::io::Write>(
 
     if !records_to_push.is_empty() {
         let task_ids = client
-            .push_records(&index_name, records_to_push.into_iter().map(Ok))
+            .push_records(index_name, records_to_push.into_iter().map(Ok))
             .await?;
         writeln!(
             writer,

@@ -7,13 +7,13 @@ use crate::algolia::search::SearchClient;
 /// List all records
 pub async fn list_records<W: Write>(
     client: &SearchClient,
-    index_name: String,
+    index_name: &str,
     writer: W,
 ) -> Result<()> {
     let mut writer = BufWriter::new(writer);
 
     client
-        .list_records(&index_name, |records| {
+        .list_records(index_name, |records| {
             for record in records {
                 writeln!(writer, "{}", record.get())?;
             }

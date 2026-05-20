@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{CommandFactory, Parser, Subcommand, ValueEnum, Args};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use clap_complete_nushell::Nushell;
 use dialoguer::Confirm;
@@ -187,7 +187,16 @@ enum SettingsCommands {
     List {
         /// Index name
         index_name: String,
-    }
+    },
+
+    /// Import index settings
+    Import {
+        /// Index name
+        index_name: String,
+        /// Input file (`-` for standard input)
+        #[arg(short, long, value_name = "FILE")]
+        file: Option<PathBuf>,
+    },
 }
 
 /// Helper function to initialize a Search API client
@@ -215,7 +224,7 @@ pub async fn run() -> Result<()> {
 
                 cmd::copy_index(
                     &client,
-                    index_name,
+                    &index_name,
                     &destination,
                     Some(scope),
                     &cli.global,
@@ -230,14 +239,20 @@ pub async fn run() -> Result<()> {
             } => {
                 let client = require_client()?;
 
-                cmd::move_index(&client, index_name, &destination, &cli.global, io::stdout())
-                    .await?;
+                cmd::move_index(
+                    &client,
+                    &index_name,
+                    &destination,
+                    &cli.global,
+                    io::stdout(),
+                )
+                .await?;
             }
 
             IndicesCommands::Delete { index_name } => {
                 let client = require_client()?;
 
-                cmd::delete_index(&client, index_name, &cli.global, io::stdout()).await?;
+                cmd::delete_index(&client, &index_name, &cli.global, io::stdout()).await?;
             }
         },
 
@@ -256,26 +271,26 @@ pub async fn run() -> Result<()> {
                 }
                 AnyShell::Nushell => generate(Nushell, &mut cmd, name, &mut io::stdout()),
             }
-        },
+        }
 
         Commands::Records { subcommand } => match subcommand {
             RecordsCommands::Import { index_name, file } => {
                 let client = require_client()?;
 
-                cmd::import_records(&client, index_name, file, io::stdout()).await?;
+                cmd::import_records(&client, &index_name, file, io::stdout()).await?;
             }
 
             RecordsCommands::List { index_name } => {
                 let client = require_client()?;
                 let stdout = io::stdout();
 
-                cmd::list_records(&client, index_name, stdout.lock()).await?;
+                cmd::list_records(&client, &index_name, stdout.lock()).await?;
             }
 
             RecordsCommands::Replace { index_name, file } => {
                 let client = require_client()?;
 
-                cmd::replace_records(&client, index_name, file, io::stdout()).await?;
+                cmd::replace_records(&client, &index_name, file, io::stdout()).await?;
             }
         },
 
@@ -283,10 +298,15 @@ pub async fn run() -> Result<()> {
             SettingsCommands::List { index_name } => {
                 let client = require_client()?;
 
-                cmd::list_settings(&client, index_name, &cli.global, io::stdout()).await?;
+                cmd::list_settings(&client, &index_name, &cli.global, io::stdout()).await?;
             }
-        }
 
+            SettingsCommands::Import { index_name, file } => {
+                let client = require_client()?;
+
+                cmd::import_settings(&client, &index_name, file, io::stdout()).await?;
+            }
+        },
     }
 
     Ok(())

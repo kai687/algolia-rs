@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 pub async fn replace_records<W: std::io::Write>(
     client: &SearchClient,
-    index_name: String,
+    index_name: &str,
     file: Option<PathBuf>,
     mut writer: W,
 ) -> Result<()> {
@@ -26,13 +26,12 @@ pub async fn replace_records<W: std::io::Write>(
             ]),
         };
 
-        let copy_response = client.copy_index(&index_name, op).await?;
+        let copy_response = client.copy_index(index_name, op).await?;
         tmp_index_created = true;
 
         client
             .wait_for_task(&tmp_index, copy_response.task_id)
             .await?;
-
 
         // Step 2. Add records from file to temp index
         let records = serde_json::Deserializer::from_reader(input)
@@ -49,11 +48,13 @@ pub async fn replace_records<W: std::io::Write>(
 
         // Step 3. Move temp index to main index, overwriting it
         let move_op = MoveOperation {
-            destination: index_name.clone(),
+            destination: index_name.to_string(),
         };
 
         let move_response = client.move_index(&tmp_index, move_op).await?;
-        client.wait_for_task(&index_name, move_response.task_id).await?;
+        client
+            .wait_for_task(index_name, move_response.task_id)
+            .await?;
 
         writeln!(writer, "Replaced records in {index_name}")?;
 
@@ -169,7 +170,7 @@ mod tests {
 
         replace_records(
             &api.client,
-            "test-index".to_string(),
+            "test-index",
             Some(file.path().to_path_buf()),
             &mut output,
         )
@@ -275,7 +276,7 @@ mod tests {
 
         let result = replace_records(
             &api.client,
-            "test-index".to_string(),
+            "test-index",
             Some(file.path().to_path_buf()),
             &mut output,
         )

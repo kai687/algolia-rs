@@ -14,6 +14,7 @@ pub mod list_indices;
 pub mod list_records;
 pub mod operation_index;
 pub mod push_records;
+pub mod set_settings;
 pub mod wait_for_indexing_task;
 
 /// Represent an API error
@@ -101,6 +102,14 @@ impl SearchClient {
         self.send(request).await
     }
 
+    /// Wrapper for PUT requests (require request body) (Returns JSON response)
+    async fn put<T: DeserializeOwned, D: Serialize>(&self, path: &str, data: &D) -> Result<T> {
+        let request_url = format!("{}{}", self.base_url, path);
+        let request = self.http.put(request_url).json(data);
+
+        self.send(request).await
+    }
+
     /// Wrapper for DELETE requests (Returns JSON response)
     async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let request_url = format!("{}{}", self.base_url, path);
@@ -160,7 +169,7 @@ mod tests {
     use test_support::AlgoliaMock;
 
     use super::*;
-    use httpmock::Method::{DELETE, GET, POST};
+    use httpmock::Method::{DELETE, GET, POST, PUT};
     use serde_json::json;
 
     #[tokio::test]
@@ -278,6 +287,27 @@ mod tests {
 
         api.client
             .post::<serde_json::Value, TestData>("/testing", &data)
+            .await
+            .unwrap();
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn put_request_succeeds() {
+        let api = AlgoliaMock::new();
+
+        let mock = api.server.mock(|when, then| {
+            when.method(PUT)
+                .path("/1/testing")
+                .json_body(json!({"foo": "foo", "bar": "bar"}));
+            then.status(200).json_body(json!({}));
+        });
+
+        let data = json!({"foo": "foo", "bar": "bar"});
+
+        api.client
+            .put::<serde_json::Value, serde_json::Value>("/testing", &data)
             .await
             .unwrap();
 

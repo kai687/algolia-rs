@@ -11,7 +11,7 @@ use colored::Colorize;
 /// Copy an index
 pub async fn copy_index<W: std::io::Write>(
     client: &SearchClient,
-    index_name: String,
+    index_name: &str,
     destination: &str,
     scope: Option<Vec<OperationScope>>,
     global_opts: &GlobalOpts,
@@ -33,7 +33,7 @@ pub async fn copy_index<W: std::io::Write>(
     };
 
     let response = client
-        .copy_index(&index_name, data)
+        .copy_index(index_name, data)
         .await
         .context("Can't copy index")?;
 

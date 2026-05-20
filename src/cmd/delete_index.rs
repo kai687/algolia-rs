@@ -8,7 +8,7 @@ use colored::Colorize;
 /// Delete an index
 pub async fn delete_index<W: std::io::Write>(
     client: &SearchClient,
-    index_name: String,
+    index_name: &str,
     global_opts: &GlobalOpts,
     mut writer: W,
 ) -> Result<()> {
@@ -18,7 +18,7 @@ pub async fn delete_index<W: std::io::Write>(
     }
 
     let response = client
-        .delete_index(&index_name)
+        .delete_index(index_name)
         .await
         .context("Can't delete index")?;
 
@@ -35,7 +35,7 @@ pub async fn delete_index<W: std::io::Write>(
     }
 
     if global_opts.wait {
-        client.wait_for_task(&index_name, response.task_id).await?;
+        client.wait_for_task(index_name, response.task_id).await?;
         writeln!(
             writer,
             "{} Deleted index {}",

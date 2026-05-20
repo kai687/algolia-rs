@@ -26,6 +26,9 @@ pub use replace_records::replace_records;
 pub mod list_settings;
 pub use list_settings::list_settings;
 
+pub mod import_settings;
+pub use import_settings::import_settings;
+
 fn file_or_stdin(path: Option<&path::PathBuf>) -> Result<Box<dyn io::Read>> {
     match path.and_then(|p| p.to_str()) {
         None | Some("-") => Ok(Box::new(io::stdin())),
