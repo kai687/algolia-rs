@@ -9,8 +9,12 @@ that's properly supported.
 
 ## Commands
 
-- [X] `algolia indices list`
-- [X] `algolia indices copy`
-- [X] `algolia indices move`
-- [X] `algolia indices delete`
-- [X] `algolia records import`
+- [X] `algolia-rs indices list`
+- [X] `algolia-rs indices copy`
+- [X] `algolia-rs indices move`
+- [X] `algolia-rs indices delete`
+- [X] `algolia-rs records import`
+- [X] `algolia-rs records list`
+- [X] `algolia-rs records replace`
+- [X] `algolia-rs settings get`
+- [X] `algolia-rs settings import`
