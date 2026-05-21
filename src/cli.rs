@@ -183,7 +183,7 @@ enum RecordsCommands {
 #[derive(Subcommand)]
 enum SettingsCommands {
     /// List index settings
-    #[command(visible_aliases = ["ls", "l"])]
+    #[command(visible_aliases = ["g"])]
     Get {
         /// Index name
         index_name: String,
