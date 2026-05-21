@@ -152,7 +152,7 @@ enum IndicesCommands {
 #[derive(Subcommand)]
 enum RecordsCommands {
     /// Import records from a file (or standard input)
-    #[command(visible_aliases = ["upsert", "p"])]
+    #[command(visible_aliases = ["upsert", "i"])]
     Import {
         /// Where to push records
         index_name: String,
@@ -190,6 +190,7 @@ enum SettingsCommands {
     },
 
     /// Import index settings
+    #[command(visible_aliases = ["upsert", "i"])]
     Import {
         /// Index name
         index_name: String,
