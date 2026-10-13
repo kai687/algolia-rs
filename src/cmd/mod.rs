@@ -1,37 +1,38 @@
-use anyhow::Result;
-use std::{fs, io, path};
+//! Commands: orchestrate API calls and format output.
+//!
+//! Every command takes a writer so tests can capture output.
 
-pub mod list_indices;
+use anyhow::{Context, Result};
+use std::{fs, io, path::Path};
 
-pub use list_indices::list_indices;
+mod records_replace;
+mod settings_diff;
+mod settings_get;
+mod settings_import;
 
-pub mod copy_index;
-pub use copy_index::copy_index;
+pub use records_replace::replace_records;
+pub use settings_diff::diff_settings;
+pub use settings_get::get_settings;
+pub use settings_import::import_settings;
 
-pub mod move_index;
-pub use move_index::move_index;
+/// Open `path` for reading, or standard input for `None` or `-`
+fn file_or_stdin(path: Option<&Path>) -> Result<Box<dyn io::Read>> {
+    match path {
+        None => Ok(Box::new(io::stdin())),
+        Some(p) if p.as_os_str() == "-" => Ok(Box::new(io::stdin())),
+        Some(p) => {
+            let file =
+                fs::File::open(p).with_context(|| format!("Can't open file {}", p.display()))?;
+            Ok(Box::new(file))
+        }
+    }
+}
 
-pub mod delete_index;
-pub use delete_index::delete_index;
-
-pub mod import_records;
-pub use import_records::import_records;
-
-pub mod list_records;
-pub use list_records::list_records;
-
-pub mod replace_records;
-pub use replace_records::replace_records;
-
-pub mod list_settings;
-pub use list_settings::get_settings;
-
-pub mod import_settings;
-pub use import_settings::import_settings;
-
-fn file_or_stdin(path: Option<&path::PathBuf>) -> Result<Box<dyn io::Read>> {
-    match path.and_then(|p| p.to_str()) {
-        None | Some("-") => Ok(Box::new(io::stdin())),
-        Some(p) => Ok(Box::new(fs::File::open(p)?)),
+/// Human-readable name of the input for log lines
+fn input_name(path: Option<&Path>) -> String {
+    match path {
+        None => "stdin".to_string(),
+        Some(p) if p.as_os_str() == "-" => "stdin".to_string(),
+        Some(p) => p.display().to_string(),
     }
 }
