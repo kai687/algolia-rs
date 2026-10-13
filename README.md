@@ -2,13 +2,19 @@
 
 An Algolia CLI built for CI pipelines.
 
+> [!IMPORTANT]
+> This is a personal, educational project. It is **not** an official Algolia
+> product and is **not** supported by Algolia. I built it to learn Rust and to
+> run my own documentation indexing pipeline. Use it at your own risk.
+>
+> For a supported tool, use the official [Algolia CLI](https://github.com/algolia/cli).
+
 One static binary, no interactive prompts, no config files, and output you
 can act on without piping through `jq`. Every write waits until Algolia has
 published it, so the next step in your pipeline sees the result.
 
-There is an official [Algolia CLI](https://github.com/algolia/cli)
-for interactive use. This project started as a Rust learning exercise and
-now focuses on one job: keeping an Algolia index in sync from CI.
+The official CLI covers the full Algolia API and interactive use.
+This project does one job: keeping an Algolia index in sync from CI.
 
 ## Authentication
 
