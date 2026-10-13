@@ -61,7 +61,7 @@ Replace all records of an index with records from a file or standard input.
 Input is one JSON object per line. Every record needs an `objectID`.
 
 ```sh
-my-crawler | algolia-rs records replace INDEX --file -
+algolia-rs records replace INDEX --file records.jsonl
 ```
 
 The command copies settings, rules, and synonyms to a temporary index,
@@ -70,11 +70,11 @@ The target index is never empty, and the temporary index is deleted on failure.
 
 ## Exit codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success (for `settings diff`: no drift) |
-| 1 | `settings diff` found drift |
-| 2 | Error (bad input, API error, missing credentials) |
+| Code | Meaning                                           |
+| ---- | ------------------------------------------------- |
+| 0    | Success (for `settings diff`: no drift)           |
+| 1    | `settings diff` found drift                       |
+| 2    | Error (bad input, API error, missing credentials) |
 
 ## Example workflow
 
@@ -82,8 +82,8 @@ The target index is never empty, and the temporary index is deleted on failure.
 - name: Check Algolia settings drift
   run: algolia-rs settings diff "$INDEX_NAME" --file settings.json
 
-- name: Crawl and upload
-  run: my-crawler | algolia-rs records replace "$INDEX_NAME" --file -
+- name: Upload
+  run: algolia-rs records replace "$INDEX_NAME" --file records.jsonl
 
 - name: Update index settings
   run: algolia-rs settings apply "$INDEX_NAME" --file settings.json
