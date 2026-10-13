@@ -47,12 +47,12 @@ Print the settings of an index as JSON. Use it to create `settings.json`.
 algolia-rs settings get INDEX > settings.json
 ```
 
-### `settings import`
+### `settings apply`
 
 Apply a settings file to an index. Returns once the settings are live.
 
 ```sh
-algolia-rs settings import INDEX --file settings.json
+algolia-rs settings apply INDEX --file settings.json
 ```
 
 ### `records replace`
@@ -86,7 +86,7 @@ The target index is never empty, and the temporary index is deleted on failure.
   run: my-crawler | algolia-rs records replace "$INDEX_NAME" --file -
 
 - name: Update index settings
-  run: algolia-rs settings import "$INDEX_NAME" --file settings.json
+  run: algolia-rs settings apply "$INDEX_NAME" --file settings.json
 ```
 
 All steps need `ALGOLIA_APPLICATION_ID` and `ALGOLIA_API_KEY` in `env`.

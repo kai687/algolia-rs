@@ -8,7 +8,7 @@ use colored::Colorize;
 use std::path::Path;
 
 /// Apply a settings file to an index and wait until the settings are published.
-pub async fn import_settings<W: std::io::Write>(
+pub async fn apply_settings<W: std::io::Write>(
     client: &SearchClient,
     index_name: &str,
     file: Option<&Path>,
@@ -32,10 +32,10 @@ pub async fn import_settings<W: std::io::Write>(
         OutputFormat::Text => {
             writeln!(
                 writer,
-                "{} Updated settings of {} from {} (task {})",
+                "{} Applied {} to {} (task {})",
                 "🗸".green(),
-                index_name.bold(),
                 name.bold(),
+                index_name.bold(),
                 response.task_id.to_string().dimmed()
             )?;
         }
@@ -59,7 +59,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn import_puts_settings_and_waits_for_task() {
+    async fn apply_puts_settings_and_waits_for_task() {
         let api = AlgoliaMock::new();
         let put = api.server.mock(|when, then| {
             when.method(PUT)
@@ -77,7 +77,7 @@ mod tests {
         let file = settings_file();
         let mut out = Vec::new();
 
-        import_settings(
+        apply_settings(
             &api.client,
             "idx",
             Some(file.path()),
@@ -90,12 +90,12 @@ mod tests {
         put.assert();
         task.assert();
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains("Updated settings of idx"));
+        assert!(text.contains("to idx"));
         assert!(text.contains("task 7"));
     }
 
     #[tokio::test]
-    async fn import_json_output() {
+    async fn apply_json_output() {
         let api = AlgoliaMock::new();
         api.server.mock(|when, then| {
             when.method(PUT).path("/1/indexes/idx/settings");
@@ -111,7 +111,7 @@ mod tests {
         let file = settings_file();
         let mut out = Vec::new();
 
-        import_settings(
+        apply_settings(
             &api.client,
             "idx",
             Some(file.path()),
@@ -129,12 +129,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn import_fails_on_invalid_json() {
+    async fn apply_fails_on_invalid_json() {
         let api = AlgoliaMock::new();
         let mut file = tempfile::NamedTempFile::new().unwrap();
         write!(file, "nope").unwrap();
 
-        let err = import_settings(
+        let err = apply_settings(
             &api.client,
             "idx",
             Some(file.path()),

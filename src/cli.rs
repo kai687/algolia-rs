@@ -93,9 +93,9 @@ enum SettingsCommands {
         file: Option<PathBuf>,
     },
 
-    /// Import index settings from a JSON file and wait until they are live
-    #[command(visible_aliases = ["upsert", "i"])]
-    Import {
+    /// Apply a settings file to an index and wait until the settings are live
+    #[command(visible_aliases = ["a"])]
+    Apply {
         /// Index name
         index_name: String,
         /// Input file (`-` for standard input)
@@ -141,8 +141,8 @@ pub async fn run() -> Result<ExitCode> {
                 }
             }
 
-            SettingsCommands::Import { index_name, file } => {
-                cmd::import_settings(&client, &index_name, file.as_deref(), output, stdout).await?;
+            SettingsCommands::Apply { index_name, file } => {
+                cmd::apply_settings(&client, &index_name, file.as_deref(), output, stdout).await?;
             }
         },
     }
