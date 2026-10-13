@@ -1,26 +1,47 @@
 use super::{SearchClient, UpdatedAtResponse};
 use anyhow::Result;
 
-/// Deal with index settings as raw JSON
+/// Index settings as raw JSON. Keys are kept sorted by `serde_json`.
 pub type IndexSettings = serde_json::Value;
 
 impl SearchClient {
+    /// Fetch the settings of an index
+    pub async fn get_settings(&self, index_name: &str) -> Result<IndexSettings> {
+        self.get(&format!("/indexes/{index_name}/settings")).await
+    }
+
+    /// Replace the settings of an index
     pub async fn set_settings(
         &self,
         index_name: &str,
         settings: &IndexSettings,
     ) -> Result<UpdatedAtResponse> {
-        let request_url = format!("/indexes/{index_name}/settings");
-
-        self.put(&request_url, &settings).await
+        self.put(&format!("/indexes/{index_name}/settings"), settings)
+            .await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::algolia::search::test_support::AlgoliaMock;
-    use httpmock::Method::PUT;
+    use crate::api::test_support::AlgoliaMock;
+    use httpmock::Method::{GET, PUT};
     use serde_json::json;
+
+    #[tokio::test]
+    async fn get_settings_succeeds() {
+        let api = AlgoliaMock::new();
+        let mock = api.json_response(
+            GET,
+            "/1/indexes/test-index/settings",
+            200,
+            json!({"distinct": true}),
+        );
+
+        let settings = api.client.get_settings("test-index").await.unwrap();
+
+        mock.assert();
+        assert_eq!(settings, json!({"distinct": true}));
+    }
 
     #[tokio::test]
     async fn set_settings_succeeds() {

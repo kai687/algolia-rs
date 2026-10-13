@@ -1,62 +1,83 @@
-use crate::algolia::search::{
-    RecordWithObjectID, SearchClient,
-    operation_index::{CopyOperation, MoveOperation, OperationScope},
+use crate::{
+    api::{SearchClient, indices::Scope, records::RecordWithObjectID},
+    cmd::file_or_stdin,
 };
 use anyhow::Result;
-use std::path::PathBuf;
+use colored::Colorize;
+use std::path::Path;
 
+/// Replace all records of an index.
+///
+/// 1. Copy settings, rules, and synonyms to a temporary index.
+/// 2. Upload the records there.
+/// 3. Move the temporary index over the target.
+///
+/// The target is never empty. On failure, the temporary index is deleted.
 pub async fn replace_records<W: std::io::Write>(
     client: &SearchClient,
     index_name: &str,
-    file: Option<PathBuf>,
+    file: Option<&Path>,
     mut writer: W,
 ) -> Result<()> {
-    let input = super::file_or_stdin(file.as_ref())?;
+    let input = file_or_stdin(file)?;
     let tmp_index = format!("{index_name}-tmp");
     let mut tmp_index_created = false;
 
     let result = async {
         // Step 1. Copy index (settings, rules, synonyms) to temp index
-        let op = CopyOperation {
-            destination: tmp_index.clone(),
-            scope: Some(vec![
-                OperationScope::Settings,
-                OperationScope::Rules,
-                OperationScope::Synonyms,
-            ]),
-        };
-
-        let copy_response = client.copy_index(index_name, op).await?;
+        let copy_response = client
+            .copy_index(
+                index_name,
+                &tmp_index,
+                Some(&[Scope::Settings, Scope::Rules, Scope::Synonyms]),
+            )
+            .await?;
         tmp_index_created = true;
 
         client
             .wait_for_task(&tmp_index, copy_response.task_id)
             .await?;
+        writeln!(
+            writer,
+            "{} Copied settings, rules, and synonyms to {}",
+            "🗸".green(),
+            tmp_index.bold()
+        )?;
 
         // Step 2. Add records from file to temp index
+        let mut record_count: usize = 0;
         let records = serde_json::Deserializer::from_reader(input)
             .into_iter::<RecordWithObjectID>()
-            .map(|record| record.map_err(Into::into));
+            .map(|record| {
+                record_count += 1;
+                record.map_err(Into::into)
+            });
 
-        let upsert_task_ids = client
-            .upsert_records(&tmp_index, records.into_iter())
-            .await?;
+        let upsert_task_ids = client.upsert_records(&tmp_index, records).await?;
+        let batch_count = upsert_task_ids.len();
 
         for task_id in upsert_task_ids {
             client.wait_for_task(&tmp_index, task_id).await?;
         }
+        writeln!(
+            writer,
+            "{} Uploaded {record_count} records in {batch_count} batches to {}",
+            "🗸".green(),
+            tmp_index.bold()
+        )?;
 
         // Step 3. Move temp index to main index, overwriting it
-        let move_op = MoveOperation {
-            destination: index_name.to_string(),
-        };
-
-        let move_response = client.move_index(&tmp_index, move_op).await?;
+        let move_response = client.move_index(&tmp_index, index_name).await?;
         client
             .wait_for_task(index_name, move_response.task_id)
             .await?;
 
-        writeln!(writer, "Replaced records in {index_name}")?;
+        writeln!(
+            writer,
+            "{} Replaced records in {}",
+            "🗸".green(),
+            index_name.bold()
+        )?;
 
         Ok(())
     }
@@ -73,7 +94,7 @@ pub async fn replace_records<W: std::io::Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::algolia::search::test_support::AlgoliaMock;
+    use crate::api::test_support::AlgoliaMock;
     use httpmock::Method::{DELETE, GET, POST};
     use serde_json::json;
     use std::io::Write;
@@ -168,14 +189,9 @@ mod tests {
         let file = record_file();
         let mut output = Vec::new();
 
-        replace_records(
-            &api.client,
-            "test-index",
-            Some(file.path().to_path_buf()),
-            &mut output,
-        )
-        .await
-        .unwrap();
+        replace_records(&api.client, "test-index", Some(file.path()), &mut output)
+            .await
+            .unwrap();
 
         copy.assert();
         wait_copy.assert();
@@ -184,10 +200,12 @@ mod tests {
         move_index.assert();
         wait_move.assert();
 
-        assert_eq!(
-            String::from_utf8(output).unwrap(),
-            "Replaced records in test-index\n"
-        );
+        let output = String::from_utf8(output).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].contains("Copied settings, rules, and synonyms to test-index-tmp"));
+        assert!(lines[1].contains("Uploaded 1 records in 1 batches to test-index-tmp"));
+        assert!(lines[2].contains("Replaced records in test-index"));
     }
 
     #[tokio::test]
@@ -274,13 +292,8 @@ mod tests {
         let file = record_file();
         let mut output = Vec::new();
 
-        let result = replace_records(
-            &api.client,
-            "test-index",
-            Some(file.path().to_path_buf()),
-            &mut output,
-        )
-        .await;
+        let result =
+            replace_records(&api.client, "test-index", Some(file.path()), &mut output).await;
 
         assert!(result.is_err());
 

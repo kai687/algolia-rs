@@ -1,21 +1,18 @@
+//! Thin client for the Algolia Search REST API.
+//!
+//! This layer only speaks HTTP and JSON. It returns typed responses and
+//! never formats output. Presentation lives in [`crate::cmd`].
+
 use std::fmt;
 
 use anyhow::{Context, Result};
-use chrono::DateTime;
-use colored::Colorize;
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::{Map, Value};
 
-pub mod delete_index;
-pub mod get_settings;
-pub mod index_exists;
-pub mod list_indices;
-pub mod list_records;
-pub mod operation_index;
-pub mod push_records;
-pub mod set_settings;
-pub mod wait_for_indexing_task;
+pub mod indices;
+pub mod records;
+pub mod settings;
+pub mod tasks;
 
 /// Represent an API error
 #[derive(Debug, Deserialize, thiserror::Error)]
@@ -30,6 +27,15 @@ impl fmt::Display for AlgoliaApiError {
     }
 }
 
+/// Response of write operations that return a task ID and a timestamp
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatedAtResponse {
+    #[serde(rename = "taskID")]
+    pub task_id: u64,
+    pub updated_at: String,
+}
+
 /// Client for requests to the Algolia Search API
 pub struct SearchClient {
     /// The HTTP client
@@ -41,7 +47,7 @@ pub struct SearchClient {
 impl SearchClient {
     /// Create a new Search API client
     pub fn new(app_id: &str, api_key: &str) -> Result<Self> {
-        let base_url = format!("https://{}-dsn.algolia.net/1", &app_id);
+        let base_url = format!("https://{app_id}-dsn.algolia.net/1");
         Self::new_with_base_url(app_id, api_key, base_url)
     }
 
@@ -117,60 +123,12 @@ impl SearchClient {
     }
 }
 
-/// Algolia record (without object ID)
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Record(Map<String, Value>);
-
-/// Algolia record with object ID
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RecordWithObjectID {
-    /// A unique identifier for the record
-    #[serde(rename = "objectID")]
-    pub object_id: String,
-
-    /// Record attributes
-    #[serde(flatten)]
-    pub fields: Map<String, Value>,
-}
-
-/// Try to 'upcast' a simple record to one with `objectID`
-impl TryFrom<Record> for RecordWithObjectID {
-    type Error = anyhow::Error;
-
-    fn try_from(record: Record) -> Result<Self> {
-        serde_json::from_value(Value::Object(record.0)).map_err(Into::into)
-    }
-}
-
-/// Shared response with Task ID
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdatedAtResponse {
-    #[serde(rename = "taskID")]
-    pub task_id: u64,
-    pub updated_at: String,
-}
-
-impl fmt::Display for UpdatedAtResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let dt = DateTime::parse_from_rfc3339(&self.updated_at).map_err(|_| fmt::Error)?;
-        write!(
-            f,
-            "{} Task {} queued at {}",
-            "⧖".green(),
-            self.task_id.to_string().dimmed(),
-            dt.format("%Y-%m-%d %H:%M:%S").to_string().dimmed()
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use test_support::AlgoliaMock;
-
     use super::*;
     use httpmock::Method::{DELETE, GET, POST, PUT};
     use serde_json::json;
+    use test_support::AlgoliaMock;
 
     #[tokio::test]
     async fn get_request_succeeds() {
@@ -325,49 +283,6 @@ mod tests {
             .unwrap();
 
         mock.assert();
-    }
-
-    #[test]
-    fn record_converts_to_record_with_object_id() {
-        let record = Record(
-            serde_json::from_value(json!({"objectID": "1", "name": "test-record"})).unwrap(),
-        );
-
-        let converted = RecordWithObjectID::try_from(record).unwrap();
-        assert_eq!(converted.object_id, "1");
-        assert_eq!(converted.fields["name"], json!("test-record"));
-    }
-
-    #[test]
-    fn record_conversion_fails_without_object_id() {
-        let record = Record(serde_json::from_value(json!({"name": "test-record"})).unwrap());
-
-        let result = RecordWithObjectID::try_from(record);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn updated_at_response_formats_display() {
-        let response = UpdatedAtResponse {
-            updated_at: "2026-05-19T08:34:05Z".to_string(),
-            task_id: 123_456,
-        };
-
-        let output = response.to_string();
-        assert!(output.contains("Task"));
-        assert!(output.contains("2026-05-19 08:34:05"));
-    }
-
-    #[test]
-    fn updated_at_response_invalid_updated_at() {
-        let response = UpdatedAtResponse {
-            updated_at: "now".to_string(),
-            task_id: 123_456,
-        };
-
-        let mut output = String::new();
-        let result = fmt::write(&mut output, format_args!("{response}"));
-        assert!(result.is_err());
     }
 
     #[test]
