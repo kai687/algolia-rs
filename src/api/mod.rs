@@ -44,11 +44,18 @@ pub struct SearchClient {
     base_url: String,
 }
 
+/// Base URL of the primary host.
+///
+/// The `-dsn` host is meant for reads and can reject writes with
+/// "This host is read-only" (HTTP 400), so every request uses the primary host.
+fn default_base_url(app_id: &str) -> String {
+    format!("https://{app_id}.algolia.net/1")
+}
+
 impl SearchClient {
     /// Create a new Search API client
     pub fn new(app_id: &str, api_key: &str) -> Result<Self> {
-        let base_url = format!("https://{app_id}-dsn.algolia.net/1");
-        Self::new_with_base_url(app_id, api_key, base_url)
+        Self::new_with_base_url(app_id, api_key, default_base_url(app_id))
     }
 
     /// Constructor for easier testing
@@ -283,6 +290,11 @@ mod tests {
             .unwrap();
 
         mock.assert();
+    }
+
+    #[test]
+    fn default_base_url_uses_primary_host() {
+        assert_eq!(default_base_url("APPID"), "https://APPID.algolia.net/1");
     }
 
     #[test]
