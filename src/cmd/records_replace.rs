@@ -1,5 +1,5 @@
 use crate::{
-    api::{SearchClient, indices::Scope, records::RecordWithObjectID},
+    api::{AlgoliaApiError, SearchClient, indices::Scope, records::RecordWithObjectID},
     cmd::file_or_stdin,
 };
 use anyhow::Result;
@@ -8,6 +8,7 @@ use std::path::Path;
 
 /// Replace all records of an index.
 ///
+/// 0. Delete a leftover temporary index from an earlier, interrupted run.
 /// 1. Copy settings, rules, and synonyms to a temporary index.
 /// 2. Upload the records there.
 /// 3. Move the temporary index over the target.
@@ -24,6 +25,25 @@ pub async fn replace_records<W: std::io::Write>(
     let mut tmp_index_created = false;
 
     let result = async {
+        // Step 0. Remove stale temp index, so old records can't end up in the target
+        match client.delete_index(&tmp_index).await {
+            Ok(response) => {
+                client.wait_for_task(&tmp_index, response.task_id).await?;
+                writeln!(
+                    writer,
+                    "{} Deleted leftover temporary index {}",
+                    "🗸".green(),
+                    tmp_index.bold()
+                )?;
+            }
+            Err(error)
+                if matches!(
+                    error.downcast_ref::<AlgoliaApiError>(),
+                    Some(AlgoliaApiError { status: 404, .. })
+                ) => {}
+            Err(error) => return Err(error),
+        }
+
         // Step 1. Copy index (settings, rules, synonyms) to temp index
         let copy_response = client
             .copy_index(
@@ -186,6 +206,13 @@ mod tests {
             json!({"status": "published"}),
         );
 
+        let no_stale = api.json_response(
+            DELETE,
+            "/1/indexes/test-index-tmp",
+            404,
+            json!({"message": "Index test-index-tmp does not exist", "status": 404}),
+        );
+
         let file = record_file();
         let mut output = Vec::new();
 
@@ -193,6 +220,7 @@ mod tests {
             .await
             .unwrap();
 
+        no_stale.assert();
         copy.assert();
         wait_copy.assert();
         upload.assert();
@@ -206,6 +234,88 @@ mod tests {
         assert!(lines[0].contains("Copied settings, rules, and synonyms to test-index-tmp"));
         assert!(lines[1].contains("Uploaded 1 records in 1 batches to test-index-tmp"));
         assert!(lines[2].contains("Replaced records in test-index"));
+    }
+
+    #[tokio::test]
+    async fn replace_records_deletes_leftover_tmp_index_first() {
+        let api = AlgoliaMock::new();
+
+        let delete_stale = api.json_response(
+            DELETE,
+            "/1/indexes/test-index-tmp",
+            200,
+            json!({"taskID": 10, "deletedAt": "2026-05-19T08:50:12.848Z"}),
+        );
+
+        let wait_delete = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/10",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let copy = api.json_response(
+            POST,
+            "/1/indexes/test-index/operation",
+            200,
+            json!({"taskID": 1, "updatedAt": "2026-05-19T08:50:12.848Z"}),
+        );
+
+        let wait_copy = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/1",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let upload = api.json_response(
+            POST,
+            "/1/indexes/test-index-tmp/batch",
+            200,
+            json!({"objectIDs": ["1"], "taskID": 2}),
+        );
+
+        let wait_upload = api.json_response(
+            GET,
+            "/1/indexes/test-index-tmp/task/2",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let move_index = api.json_response(
+            POST,
+            "/1/indexes/test-index-tmp/operation",
+            200,
+            json!({"taskID": 3, "updatedAt": "2026-05-19T08:50:12.848Z"}),
+        );
+
+        let wait_move = api.json_response(
+            GET,
+            "/1/indexes/test-index/task/3",
+            200,
+            json!({"status": "published"}),
+        );
+
+        let file = record_file();
+        let mut output = Vec::new();
+
+        replace_records(&api.client, "test-index", Some(file.path()), &mut output)
+            .await
+            .unwrap();
+
+        delete_stale.assert();
+        wait_delete.assert();
+        copy.assert();
+        wait_copy.assert();
+        upload.assert();
+        wait_upload.assert();
+        move_index.assert();
+        wait_move.assert();
+
+        let output = String::from_utf8(output).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 4);
+        assert!(lines[0].contains("Deleted leftover temporary index test-index-tmp"));
     }
 
     #[tokio::test]
@@ -282,11 +392,12 @@ mod tests {
                 }));
         });
 
+        // Called twice: once for a leftover index (none exists), once for cleanup after the failure
         let delete_tmp = api.json_response(
             DELETE,
             "/1/indexes/test-index-tmp",
-            200,
-            json!({"taskID": 4, "deletedAt": "2026-05-19T08:50:12.848Z"}),
+            404,
+            json!({"message": "Index test-index-tmp does not exist", "status": 404}),
         );
 
         let file = record_file();
@@ -302,6 +413,6 @@ mod tests {
         upload.assert();
         wait_upload.assert();
         move_index.assert();
-        delete_tmp.assert();
+        delete_tmp.assert_calls(2);
     }
 }
