@@ -12,6 +12,9 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
+/// Read-only keys that the API returns but that aren't settings
+const IGNORED_KEYS: &[&str] = &["version"];
+
 /// One differing top-level setting
 #[derive(Debug, Serialize, PartialEq)]
 pub struct Change {
@@ -37,19 +40,28 @@ impl SettingsDiff {
     ///
     /// Only top-level keys are compared, nested values are compared wholesale.
     /// A key present in both with equal values is not a change.
+    ///
+    /// Keys with a `null` value count as unset, and the read-only `version`
+    /// key is ignored. The API returns both for settings that were never
+    /// configured, so they aren't real drift.
     #[must_use]
     pub fn compute(index: &str, local: &Value, remote: &Value) -> Self {
         let empty = serde_json::Map::new();
         let local = local.as_object().unwrap_or(&empty);
         let remote = remote.as_object().unwrap_or(&empty);
 
-        let keys: BTreeSet<&String> = local.keys().chain(remote.keys()).collect();
+        let keys: BTreeSet<&String> = local
+            .iter()
+            .chain(remote.iter())
+            .filter(|(key, value)| !value.is_null() && !IGNORED_KEYS.contains(&key.as_str()))
+            .map(|(key, _)| key)
+            .collect();
 
         let changes = keys
             .into_iter()
             .filter_map(|key| {
-                let l = local.get(key);
-                let r = remote.get(key);
+                let l = local.get(key).filter(|v| !v.is_null());
+                let r = remote.get(key).filter(|v| !v.is_null());
                 (l != r).then(|| Change {
                     key: key.clone(),
                     local: l.cloned(),
@@ -262,6 +274,36 @@ mod tests {
                     remote: None,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn compute_treats_null_as_unset() {
+        let local = json!({"distinct": true});
+        let remote = json!({"distinct": true, "optionalWords": null, "replicas": null});
+        assert!(SettingsDiff::compute("idx", &local, &remote).is_empty());
+        assert!(SettingsDiff::compute("idx", &remote, &local).is_empty());
+    }
+
+    #[test]
+    fn compute_ignores_version() {
+        let local = json!({"distinct": true});
+        let remote = json!({"distinct": true, "version": 1});
+        assert!(SettingsDiff::compute("idx", &local, &remote).is_empty());
+    }
+
+    #[test]
+    fn compute_reports_null_against_value() {
+        let local = json!({"optionalWords": null});
+        let remote = json!({"optionalWords": ["a"]});
+        let diff = SettingsDiff::compute("idx", &local, &remote);
+        assert_eq!(
+            diff.changes,
+            vec![Change {
+                key: "optionalWords".into(),
+                local: None,
+                remote: Some(json!(["a"])),
+            }]
         );
     }
 
